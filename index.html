@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>GitHub Pages Loader</title>
+  <title>GitHub Pages Fetch & Replace</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     input { width: 400px; padding: 10px; }
@@ -10,78 +10,72 @@
   </style>
 </head>
 <body>
-  <h2>GitHub Pages Viewer</h2>
-  <p>Enter a GitHub Pages site URL:</p>
+  <h2>GitHub Pages Fetch & Replace</h2>
+  <p>Enter a GitHub Pages site (e.g. <code>https://username.github.io/project</code>):</p>
   <input type="text" id="siteInput" placeholder="https://username.github.io/project">
-  <button onclick="loadFromInput()">Load Site</button>
+  <button onclick="start()">Load Site</button>
 
   <script>
-    function getParam(name) {
-      const url = new URL(window.location.href);
-      return url.searchParams.get(name);
-    }
-
-    function isRelative(url) {
-      return !/^(https?:|\/\/|#|mailto:|javascript:)/.test(url);
-    }
-
-    async function loadAndReplace(siteUrl) {
-      if (!siteUrl.startsWith('http')) {
-        alert('Invalid URL: ' + siteUrl);
-        return;
-      }
-
+    async function fetchAndReplace(targetUrl) {
       try {
-        const response = await fetch(siteUrl);
-        if (!response.ok) throw new Error('Failed to fetch: ' + siteUrl);
+        const response = await fetch(targetUrl);
+        if (!response.ok) throw new Error('Failed to fetch: ' + targetUrl);
 
         let html = await response.text();
 
-        const baseUrl = siteUrl.replace(/\/[^\/]*$/, '/'); // Remove filename
+        // Create a DOM to safely manipulate links
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
 
-        // Rewriting relative href/src attributes
-        html = html.replace(/(href|src)=["']([^"']+)["']/g, (match, attr, link) => {
-          if (isRelative(link)) {
-            const absolute = baseUrl + link.replace(/^\//, '');
-            return `${attr}="${absolute}"`;
+        // Fix all <a> hrefs and <img/script/link> src/href
+        doc.querySelectorAll("a[href]").forEach(a => {
+          let href = a.getAttribute("href");
+          if (!href) return;
+          // relative or github.io link
+          if (/^https?:\/\/.*github\.io/.test(href) || !/^https?:|^\/\//.test(href)) {
+            const absolute = new URL(href, targetUrl).href;
+            a.setAttribute("href", "/?l=" + encodeURIComponent(absolute));
           }
-          return match;
         });
 
-        // Rewrite <a> links to redirect through this tool using ?l=
-        html = html.replace(/<a\s+([^>]*?)href=["']([^"']+)["']/gi, (match, preAttrs, link) => {
-          let newHref = link;
-
-          if (isRelative(link)) {
-            newHref = baseUrl + link.replace(/^\//, '');
+        doc.querySelectorAll("[src],link[href]").forEach(el => {
+          const attr = el.hasAttribute("src") ? "src" : "href";
+          let path = el.getAttribute(attr);
+          if (!path) return;
+          if (!/^https?:|^\/\//.test(path)) {
+            el.setAttribute(attr, new URL(path, targetUrl).href);
           }
-
-          const redirected = `${window.location.origin + window.location.pathname}?l=${encodeURIComponent(newHref)}`;
-          return `<a ${preAttrs}href="${redirected}"`;
         });
 
+        // Replace current page content
         document.open();
-        document.write(html);
+        document.write("<!DOCTYPE html>" + doc.documentElement.outerHTML);
         document.close();
       } catch (err) {
         console.error(err);
-        alert('Error loading site: ' + err.message);
+        alert("Error loading: " + targetUrl);
       }
     }
 
-    function loadFromInput() {
-      const inputUrl = document.getElementById('siteInput').value.trim().replace(/\/$/, '');
-      if (inputUrl) {
-        const newUrl = `${window.location.origin + window.location.pathname}?l=${encodeURIComponent(inputUrl)}`;
-        window.location.href = newUrl;
+    function start() {
+      const siteUrl = document.getElementById("siteInput").value.trim().replace(/\/$/, "");
+      if (!siteUrl.startsWith("http")) {
+        alert("Please enter a valid site URL (must start with http)");
+        return;
       }
+      const indexUrl = siteUrl + "/index.html";
+      history.replaceState(null, "", "/?l=" + encodeURIComponent(indexUrl));
+      fetchAndReplace(indexUrl);
     }
 
-    // On page load: if ?l= is present, fetch and display that site
-    const linkParam = getParam('l');
-    if (linkParam) {
-      loadAndReplace(linkParam);
-    }
+    // On load: check for ?l= param
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const l = params.get("l");
+      if (l) {
+        fetchAndReplace(l);
+      }
+    })();
   </script>
 </body>
 </html>
