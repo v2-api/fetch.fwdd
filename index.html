@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>GitHub Pages Fetch & Replace</title>
+  <title>GitHub Pages Loader</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     input { width: 400px; padding: 10px; }
@@ -10,39 +10,77 @@
   </style>
 </head>
 <body>
-  <h2>GitHub Pages Fetch & Replace</h2>
-  <p>Enter a GitHub Pages site (e.g. <code>https://username.github.io/project</code>):</p>
+  <h2>GitHub Pages Viewer</h2>
+  <p>Enter a GitHub Pages site URL:</p>
   <input type="text" id="siteInput" placeholder="https://username.github.io/project">
-  <button onclick="loadAndReplace()">Load Site</button>
+  <button onclick="loadFromInput()">Load Site</button>
 
   <script>
-    async function loadAndReplace() {
-      const siteUrl = document.getElementById('siteInput').value.trim().replace(/\/$/, '');
+    function getParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name);
+    }
+
+    function isRelative(url) {
+      return !/^(https?:|\/\/|#|mailto:|javascript:)/.test(url);
+    }
+
+    async function loadAndReplace(siteUrl) {
       if (!siteUrl.startsWith('http')) {
-        alert('Please enter a valid site URL (must start with http)');
+        alert('Invalid URL: ' + siteUrl);
         return;
       }
 
       try {
-        const response = await fetch(siteUrl + '/index.html');
-        if (!response.ok) throw new Error('Failed to fetch the site.');
+        const response = await fetch(siteUrl);
+        if (!response.ok) throw new Error('Failed to fetch: ' + siteUrl);
 
         let html = await response.text();
 
-        // Replace relative href/src with absolute
-        html = html.replace(/(href|src)=["'](?!https?:|\/\/|#|mailto:|javascript:)([^"']+)["']/g, (match, attr, path) => {
-          const absolutePath = siteUrl + '/' + path.replace(/^\//, '');
-          return `${attr}="${absolutePath}"`;
+        const baseUrl = siteUrl.replace(/\/[^\/]*$/, '/'); // Remove filename
+
+        // Rewriting relative href/src attributes
+        html = html.replace(/(href|src)=["']([^"']+)["']/g, (match, attr, link) => {
+          if (isRelative(link)) {
+            const absolute = baseUrl + link.replace(/^\//, '');
+            return `${attr}="${absolute}"`;
+          }
+          return match;
         });
 
-        // Replace current page with the fetched and fixed HTML
+        // Rewrite <a> links to redirect through this tool using ?l=
+        html = html.replace(/<a\s+([^>]*?)href=["']([^"']+)["']/gi, (match, preAttrs, link) => {
+          let newHref = link;
+
+          if (isRelative(link)) {
+            newHref = baseUrl + link.replace(/^\//, '');
+          }
+
+          const redirected = `${window.location.origin + window.location.pathname}?l=${encodeURIComponent(newHref)}`;
+          return `<a ${preAttrs}href="${redirected}"`;
+        });
+
         document.open();
         document.write(html);
         document.close();
       } catch (err) {
         console.error(err);
-        alert('Error loading site. Check the console for more details.');
+        alert('Error loading site: ' + err.message);
       }
+    }
+
+    function loadFromInput() {
+      const inputUrl = document.getElementById('siteInput').value.trim().replace(/\/$/, '');
+      if (inputUrl) {
+        const newUrl = `${window.location.origin + window.location.pathname}?l=${encodeURIComponent(inputUrl)}`;
+        window.location.href = newUrl;
+      }
+    }
+
+    // On page load: if ?l= is present, fetch and display that site
+    const linkParam = getParam('l');
+    if (linkParam) {
+      loadAndReplace(linkParam);
     }
   </script>
 </body>
