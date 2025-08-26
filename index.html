@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>GitHub Pages Fetch & Replace</title>
+  <title>GitHub Pages Viewer</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     input { width: 400px; padding: 10px; }
@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="hidden">
-    <h2>GitHub Pages Fetch & Replace</h2>
+    <h2>GitHub Pages Viewer</h2>
     <p>Enter a GitHub Pages site (e.g. <code>https://username.github.io/project</code>):</p>
     <input type="text" id="siteInput" placeholder="https://username.github.io/project">
     <button onclick="start()">Load Site</button>
@@ -35,7 +35,7 @@
           // relative or github.io link
           if (/^https?:\/\/.*github\.io/.test(href) || !/^https?:|^\/\//.test(href)) {
             const absolute = new URL(href, targetUrl).href;
-            a.setAttribute("href", "/?l=" + encodeURIComponent(absolute));
+            a.setAttribute("href", "/?l=" + absolute);
           }
         });
 
