@@ -16,6 +16,7 @@
     <input type="text" id="siteInput" placeholder="https://username.github.io/project">
     <button onclick="start()">Load Site</button>
   </div>
+
   <script>
     async function fetchAndReplace(targetUrl) {
       try {
@@ -24,27 +25,71 @@
 
         let html = await response.text();
 
-        // Create a DOM to safely manipulate links
+        // Parse HTML into DOM
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
-        // Fix all <a> hrefs and <img/script/link> src/href
-        doc.querySelectorAll("a[href]").forEach(a => {
-          let href = a.getAttribute("href");
-          if (!href) return;
-          // relative or github.io link
-          if (/^https?:\/\/.*github\.io/.test(href) || !/^https?:|^\/\//.test(href)) {
-            const absolute = new URL(href, targetUrl).href;
-            a.setAttribute("href", "/?l=" + absolute);
+        // Helper: rewrite any attribute that is a URL
+        function rewriteUrl(el, attr) {
+          let val = el.getAttribute(attr);
+          if (!val) return;
+          // Relative or github.io links get rewritten
+          if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
+            const absolute = new URL(val, targetUrl).href;
+            if (attr === "href" && el.tagName.toLowerCase() === "a") {
+              el.setAttribute(attr, "/?l=" + absolute);
+            } else if (el.tagName.toLowerCase() === "iframe") {
+              el.setAttribute(attr, "/?l=" + absolute);
+            } else {
+              el.setAttribute(attr, absolute);
+            }
+          }
+        }
+
+        // Rewrite href/src/srcset everywhere
+        doc.querySelectorAll("[href],[src],[srcset]").forEach(el => {
+          if (el.hasAttribute("href")) rewriteUrl(el, "href");
+          if (el.hasAttribute("src")) rewriteUrl(el, "src");
+          if (el.hasAttribute("srcset")) {
+            let srcset = el.getAttribute("srcset");
+            if (srcset) {
+              let newSet = srcset.split(",").map(s => {
+                let [url, size] = s.trim().split(/\s+/);
+                if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
+                  url = new URL(url, targetUrl).href;
+                }
+                return size ? url + " " + size : url;
+              }).join(", ");
+              el.setAttribute("srcset", newSet);
+            }
           }
         });
 
-        doc.querySelectorAll("[src],link[href]").forEach(el => {
-          const attr = el.hasAttribute("src") ? "src" : "href";
-          let path = el.getAttribute(attr);
-          if (!path) return;
-          if (!/^https?:|^\/\//.test(path)) {
-            el.setAttribute(attr, new URL(path, targetUrl).href);
+        // Try to also rewrite inline iframe documents (same-origin only)
+        doc.querySelectorAll("iframe").forEach(iframe => {
+          try {
+            const innerDoc = iframe.contentDocument || iframe.contentWindow?.document;
+            if (innerDoc) {
+              innerDoc.querySelectorAll("[href],[src],[srcset]").forEach(el => {
+                if (el.hasAttribute("href")) rewriteUrl(el, "href");
+                if (el.hasAttribute("src")) rewriteUrl(el, "src");
+                if (el.hasAttribute("srcset")) {
+                  let srcset = el.getAttribute("srcset");
+                  if (srcset) {
+                    let newSet = srcset.split(",").map(s => {
+                      let [url, size] = s.trim().split(/\s+/);
+                      if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
+                        url = new URL(url, targetUrl).href;
+                      }
+                      return size ? url + " " + size : url;
+                    }).join(", ");
+                    el.setAttribute("srcset", newSet);
+                  }
+                }
+              });
+            }
+          } catch (e) {
+            // Cross-origin iframes can't be accessed, ignore
           }
         });
 
@@ -52,6 +97,7 @@
         document.open();
         document.write("<!DOCTYPE html>" + doc.documentElement.outerHTML);
         document.close();
+
       } catch (err) {
         console.error(err);
         alert("Error loading: " + targetUrl);
