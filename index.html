@@ -10,11 +10,12 @@
   </style>
 </head>
 <body>
-  <h2>GitHub Pages Fetch & Replace</h2>
-  <p>Enter a GitHub Pages site (e.g. <code>https://username.github.io/project</code>):</p>
-  <input type="text" id="siteInput" placeholder="https://username.github.io/project">
-  <button onclick="start()">Load Site</button>
-
+  <div id="hidden">
+    <h2>GitHub Pages Fetch & Replace</h2>
+    <p>Enter a GitHub Pages site (e.g. <code>https://username.github.io/project</code>):</p>
+    <input type="text" id="siteInput" placeholder="https://username.github.io/project">
+    <button onclick="start()">Load Site</button>
+  </div>
   <script>
     async function fetchAndReplace(targetUrl) {
       try {
@@ -64,7 +65,7 @@
         return;
       }
       const indexUrl = siteUrl + "/index.html";
-      history.replaceState(null, "", "/?l=" + encodeURIComponent(indexUrl));
+      history.replaceState(null, "", "/?l=" + indexUrl);
       fetchAndReplace(indexUrl);
     }
 
@@ -73,6 +74,7 @@
       const params = new URLSearchParams(window.location.search);
       const l = params.get("l");
       if (l) {
+        document.getElementById("hidden").style.visibility = "hidden";
         fetchAndReplace(l);
       }
     })();
