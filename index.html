@@ -24,23 +24,29 @@
         if (!response.ok) throw new Error('Failed to fetch: ' + targetUrl);
 
         let html = await response.text();
-
-        // Parse HTML into DOM
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
+
+        // Helper: check if a URL points to an HTML page
+        function looksLikeHtml(url) {
+          return url.endsWith(".html") || url.endsWith(".htm") || !/\.[a-zA-Z0-9]+$/.test(url);
+          // ^ also catches links with no extension (e.g. /about, /docs)
+        }
 
         // Helper: rewrite any attribute that is a URL
         function rewriteUrl(el, attr) {
           let val = el.getAttribute(attr);
           if (!val) return;
-          // Relative or github.io links get rewritten
+
+          // Relative or github.io links get processed
           if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
             const absolute = new URL(val, targetUrl).href;
-            if (attr === "href" && el.tagName.toLowerCase() === "a") {
-              el.setAttribute(attr, "/?l=" + absolute);
-            } else if (el.tagName.toLowerCase() === "iframe") {
+
+            if ((el.tagName.toLowerCase() === "a" || el.tagName.toLowerCase() === "iframe") && looksLikeHtml(absolute)) {
+              // For <a> and <iframe> that go to pages, wrap with ?l=
               el.setAttribute(attr, "/?l=" + absolute);
             } else {
+              // For scripts, css, images, etc. → just use absolute URL
               el.setAttribute(attr, absolute);
             }
           }
@@ -57,39 +63,14 @@
                 let [url, size] = s.trim().split(/\s+/);
                 if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
                   url = new URL(url, targetUrl).href;
+                  if (looksLikeHtml(url)) {
+                    url = "/?l=" + url;
+                  }
                 }
                 return size ? url + " " + size : url;
               }).join(", ");
               el.setAttribute("srcset", newSet);
             }
-          }
-        });
-
-        // Try to also rewrite inline iframe documents (same-origin only)
-        doc.querySelectorAll("iframe").forEach(iframe => {
-          try {
-            const innerDoc = iframe.contentDocument || iframe.contentWindow?.document;
-            if (innerDoc) {
-              innerDoc.querySelectorAll("[href],[src],[srcset]").forEach(el => {
-                if (el.hasAttribute("href")) rewriteUrl(el, "href");
-                if (el.hasAttribute("src")) rewriteUrl(el, "src");
-                if (el.hasAttribute("srcset")) {
-                  let srcset = el.getAttribute("srcset");
-                  if (srcset) {
-                    let newSet = srcset.split(",").map(s => {
-                      let [url, size] = s.trim().split(/\s+/);
-                      if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
-                        url = new URL(url, targetUrl).href;
-                      }
-                      return size ? url + " " + size : url;
-                    }).join(", ");
-                    el.setAttribute("srcset", newSet);
-                  }
-                }
-              });
-            }
-          } catch (e) {
-            // Cross-origin iframes can't be accessed, ignore
           }
         });
 
