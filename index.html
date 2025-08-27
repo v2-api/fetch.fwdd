@@ -18,7 +18,7 @@
   </div>
 
   <script>
-    async function fetchAndReplace(targetUrl) {
+    async function fetchAndReplace(targetUrl, containerDoc = document) {
       try {
         const response = await fetch(targetUrl);
         if (!response.ok) throw new Error('Failed to fetch: ' + targetUrl);
@@ -27,12 +27,12 @@
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
-        // Helper: check if a URL points to an HTML page
+        // Detect if a URL is an HTML page
         function looksLikeHtml(url) {
           return url.endsWith(".html") || url.endsWith(".htm") || !/\.[a-zA-Z0-9]+$/.test(url);
         }
 
-        // Helper: rewrite any attribute that is a URL
+        // Rewrite URLs in attributes
         function rewriteUrl(el, attr) {
           let val = el.getAttribute(attr);
           if (!val) return;
@@ -40,40 +40,75 @@
           if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
             const absolute = new URL(val, targetUrl).href;
 
-            if ((el.tagName.toLowerCase() === "a" || el.tagName.toLowerCase() === "iframe") && looksLikeHtml(absolute)) {
+            // Links (<a>) → go through viewer if they look like HTML
+            if (el.tagName.toLowerCase() === "a" && looksLikeHtml(absolute)) {
               el.setAttribute(attr, "/?l=" + absolute);
-            } else {
+            }
+            // Iframes → fetch and inject content directly
+            else if (el.tagName.toLowerCase() === "iframe" && looksLikeHtml(absolute)) {
+              el.removeAttribute("src");
+              loadIframe(el, absolute);
+            }
+            // Everything else → just make it absolute
+            else {
               el.setAttribute(attr, absolute);
             }
           }
         }
 
-        // Rewrite href/src/srcset everywhere
+        // Process srcset separately
+        function rewriteSrcset(el) {
+          let srcset = el.getAttribute("srcset");
+          if (srcset) {
+            let newSet = srcset.split(",").map(s => {
+              let [url, size] = s.trim().split(/\s+/);
+              if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
+                url = new URL(url, targetUrl).href;
+                if (looksLikeHtml(url)) {
+                  url = "/?l=" + url;
+                }
+              }
+              return size ? url + " " + size : url;
+            }).join(", ");
+            el.setAttribute("srcset", newSet);
+          }
+        }
+
+        // Load content into an iframe
+        async function loadIframe(iframe, absUrl) {
+          try {
+            const r = await fetch(absUrl);
+            if (!r.ok) throw new Error("iframe fetch failed: " + absUrl);
+            const innerHtml = await r.text();
+            const innerDoc = parser.parseFromString(innerHtml, "text/html");
+
+            // Rewrite iframe internals too
+            innerDoc.querySelectorAll("[href],[src],[srcset]").forEach(innerEl => {
+              if (innerEl.hasAttribute("href")) rewriteUrl(innerEl, "href");
+              if (innerEl.hasAttribute("src")) rewriteUrl(innerEl, "src");
+              if (innerEl.hasAttribute("srcset")) rewriteSrcset(innerEl);
+            });
+
+            const docEl = iframe.contentDocument || iframe.contentWindow.document;
+            docEl.open();
+            docEl.write("<!DOCTYPE html>" + innerDoc.documentElement.outerHTML);
+            docEl.close();
+          } catch (e) {
+            console.error("iframe load failed:", e);
+          }
+        }
+
+        // Rewrite everything in this document
         doc.querySelectorAll("[href],[src],[srcset]").forEach(el => {
           if (el.hasAttribute("href")) rewriteUrl(el, "href");
           if (el.hasAttribute("src")) rewriteUrl(el, "src");
-          if (el.hasAttribute("srcset")) {
-            let srcset = el.getAttribute("srcset");
-            if (srcset) {
-              let newSet = srcset.split(",").map(s => {
-                let [url, size] = s.trim().split(/\s+/);
-                if (/^https?:\/\/.*github\.io/.test(url) || !/^https?:|^\/\//.test(url)) {
-                  url = new URL(url, targetUrl).href;
-                  if (looksLikeHtml(url)) {
-                    url = "/?l=" + url;
-                  }
-                }
-                return size ? url + " " + size : url;
-              }).join(", ");
-              el.setAttribute("srcset", newSet);
-            }
-          }
+          if (el.hasAttribute("srcset")) rewriteSrcset(el);
         });
 
-        // Replace current page content
-        document.open();
-        document.write("<!DOCTYPE html>" + doc.documentElement.outerHTML);
-        document.close();
+        // Inject into container document
+        containerDoc.open();
+        containerDoc.write("<!DOCTYPE html>" + doc.documentElement.outerHTML);
+        containerDoc.close();
 
       } catch (err) {
         console.error(err);
