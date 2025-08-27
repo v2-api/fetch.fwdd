@@ -30,7 +30,6 @@
         // Helper: check if a URL points to an HTML page
         function looksLikeHtml(url) {
           return url.endsWith(".html") || url.endsWith(".htm") || !/\.[a-zA-Z0-9]+$/.test(url);
-          // ^ also catches links with no extension (e.g. /about, /docs)
         }
 
         // Helper: rewrite any attribute that is a URL
@@ -38,15 +37,12 @@
           let val = el.getAttribute(attr);
           if (!val) return;
 
-          // Relative or github.io links get processed
           if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
             const absolute = new URL(val, targetUrl).href;
 
             if ((el.tagName.toLowerCase() === "a" || el.tagName.toLowerCase() === "iframe") && looksLikeHtml(absolute)) {
-              // For <a> and <iframe> that go to pages, wrap with ?l=
               el.setAttribute(attr, "/?l=" + absolute);
             } else {
-              // For scripts, css, images, etc. → just use absolute URL
               el.setAttribute(attr, absolute);
             }
           }
@@ -86,14 +82,13 @@
     }
 
     function start() {
-      const siteUrl = document.getElementById("siteInput").value.trim().replace(/\/$/, "");
+      const siteUrl = document.getElementById("siteInput").value.trim();
       if (!siteUrl.startsWith("http")) {
         alert("Please enter a valid site URL (must start with http)");
         return;
       }
-      const indexUrl = siteUrl + "/index.html";
-      history.replaceState(null, "", "/?l=" + indexUrl);
-      fetchAndReplace(indexUrl);
+      history.replaceState(null, "", "/?l=" + siteUrl);
+      fetchAndReplace(siteUrl);
     }
 
     // On load: check for ?l= param
