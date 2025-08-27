@@ -33,28 +33,27 @@
         }
 
         // Rewrite URLs in attributes
-        function rewriteUrl(el, attr) {
-          let val = el.getAttribute(attr);
-          if (!val) return;
+       function rewriteUrl(el, attr) {
+  let val = el.getAttribute(attr);
+  if (!val) return;
 
-          if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
-            const absolute = new URL(val, targetUrl).href;
+  // Only process relative URLs or github.io links
+  if (/^https?:\/\/.*github\.io/.test(val) || !/^https?:|^\/\//.test(val)) {
+    const absolute = new URL(val, targetUrl).href;
 
-            // Links (<a>) → go through viewer if they look like HTML
-            if (el.tagName.toLowerCase() === "a" && looksLikeHtml(absolute)) {
-              el.setAttribute(attr, "/?l=" + absolute);
-            }
-            // Iframes → fetch and inject content directly
-            else if (el.tagName.toLowerCase() === "iframe" && looksLikeHtml(absolute)) {
-              el.removeAttribute("src");
-              loadIframe(el, absolute);
-            }
-            // Everything else → just make it absolute
-            else {
-              el.setAttribute(attr, absolute);
-            }
-          }
-        }
+    if (el.tagName.toLowerCase() === "a" && looksLikeHtml(absolute)) {
+      // <a> tags pointing to pages → go through viewer
+      el.setAttribute(attr, "/?l=" + absolute);
+    } else if (el.tagName.toLowerCase() === "iframe") {
+      // <iframe> → always use original GitHub Pages absolute URL
+      el.setAttribute(attr, absolute);
+    } else {
+      // Everything else → absolute URL
+      el.setAttribute(attr, absolute);
+    }
+  }
+}
+
 
         // Process srcset separately
         function rewriteSrcset(el) {
