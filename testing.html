@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>WebRTC P2P Chat</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+    textarea, input { width: 100%; margin: 5px 0; }
+    button { margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h1>WebRTC P2P Chat</h1>
+
+  <textarea id="chat" rows="10" readonly placeholder="Chat log will appear here..."></textarea><br>
+  <input id="message" placeholder="Type a message..." />
+  <button onclick="sendMessage()">Send</button>
+
+  <h2>Signal Exchange (Manual)</h2>
+  <label>Your Signal:</label>
+  <textarea id="localSignal" rows="5" readonly></textarea>
+  <button onclick="copySignal()">Copy Signal</button><br><br>
+
+  <label>Paste Remote Signal:</label>
+  <textarea id="remoteSignal" rows="5" placeholder="Paste the other peer's signal here..."></textarea>
+  <button onclick="connect()">Connect</button>
+
+  <script>
+    let localConnection;
+    let dataChannel;
+
+    // Create a new WebRTC peer connection
+    function createConnection() {
+      localConnection = new RTCPeerConnection();
+
+      // Create a data channel for text communication
+      dataChannel = localConnection.createDataChannel("chat");
+      dataChannel.onopen = () => {
+        logMessage("🔗 Data channel open!");
+      };
+      dataChannel.onmessage = (event) => {
+        logMessage("Peer: " + event.data);
+      };
+
+      // Create and set local offer
+      localConnection.onicecandidate = (event) => {
+        if (event.candidate === null) {
+          document.getElementById("localSignal").value = JSON.stringify(localConnection.localDescription);
+        }
+      };
+
+      localConnection.createOffer()
+        .then(offer => localConnection.setLocalDescription(offer))
+        .catch(console.error);
+    }
+
+    createConnection();
+
+    function copySignal() {
+      const signalText = document.getElementById("localSignal").value;
+      navigator.clipboard.writeText(signalText)
+        .then(() => alert("Signal copied to clipboard!"))
+        .catch(err => console.error("Copy failed:", err));
+    }
+
+    function connect() {
+      const remoteSignal = document.getElementById("remoteSignal").value;
+      if (!remoteSignal) {
+        alert("Please paste a remote signal first.");
+        return;
+      }
+      const signal = JSON.parse(remoteSignal);
+      localConnection.setRemoteDescription(signal)
+        .then(() => {
+          if (signal.type === "offer") {
+            localConnection.createAnswer()
+              .then(answer => localConnection.setLocalDescription(answer))
+              .then(() => {
+                document.getElementById("localSignal").value = JSON.stringify(localConnection.localDescription);
+              });
+          }
+        })
+        .catch(err => {
+          console.error("Error setting remote description:", err);
+          alert("Invalid or malformed signal.");
+        });
+
+      // Listen for incoming data channel if not initiator
+      localConnection.ondatachannel = (event) => {
+        dataChannel = event.channel;
+        dataChannel.onmessage = (e) => logMessage("Peer: " + e.data);
+        dataChannel.onopen = () => logMessage("🔗 Data channel open!");
+      };
+    }
+
+    function sendMessage() {
+      const input = document.getElementById("message");
+      const msg = input.value.trim();
+      if (msg && dataChannel && dataChannel.readyState === "open") {
+        dataChannel.send(msg);
+        logMessage("Me: " + msg);
+        input.value = "";
+      } else {
+        alert("Data channel is not open yet.");
+      }
+    }
+
+    function logMessage(msg) {
+      const chat = document.getElementById("chat");
+      chat.value += msg + "\n";
+      chat.scrollTop = chat.scrollHeight;
+    }
+  </script>
+</body>
+</html>
