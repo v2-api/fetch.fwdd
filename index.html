@@ -1,116 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Web Viewer with Link Support</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Site Fetcher</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    input { width: 400px; padding: 10px; }
-    button { padding: 10px 15px; }
+    body {
+      font-family: sans-serif;
+      margin: 0; padding: 0;
+    }
+    #content {
+      padding: 20px;
+    }
+    iframe {
+      width: 100%;
+      height: 100vh;
+      border: none;
+    }
   </style>
 </head>
 <body>
-  <div id="inputContainer">
-    <h2>Universal Web Viewer</h2>
-    <p>Enter any website URL:</p>
-    <input type="text" id="siteInput" placeholder="https://example.com">
-    <button onclick="start()">Load Site</button>
-  </div>
+  <div id="content">Loading...</div>
 
   <script>
-    const proxyBase = 'https://corsproxy.io/?';
+    // Get the URL to fetch from the query param ?url=
+    function getUrlParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
 
-    async function fetchAndReplace(targetUrl) {
-      const proxyUrl = proxyBase + encodeURIComponent(targetUrl);
+    // Resolve relative URL against base URL
+    function resolveUrl(base, relative) {
       try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error('Fetch failed: ' + response.status);
-        const html = await response.text();
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-
-        // Check if the link is HTML-like
-        function isHtmlLink(url) {
-          return url.endsWith(".html") || url.endsWith(".htm") || !/\.[a-z0-9]+$/i.test(url);
-        }
-
-        // Rewrite <a>, <img>, etc. links
-        function rewriteUrl(el, attr) {
-          const val = el.getAttribute(attr);
-          if (!val) return;
-
-          const absolute = new URL(val, targetUrl).href;
-
-          if (el.tagName.toLowerCase() === "a" && isHtmlLink(absolute)) {
-            el.setAttribute(attr, "?l=" + encodeURIComponent(absolute));
-            el.setAttribute("data-proxied", "true");
-          } else {
-            el.setAttribute(attr, absolute);
-          }
-        }
-
-        function rewriteSrcset(el) {
-          const srcset = el.getAttribute("srcset");
-          if (!srcset) return;
-          const newSet = srcset.split(",").map(s => {
-            let [url, size] = s.trim().split(/\s+/);
-            url = new URL(url, targetUrl).href;
-            if (isHtmlLink(url)) url = "?l=" + encodeURIComponent(url);
-            return size ? `${url} ${size}` : url;
-          }).join(", ");
-          el.setAttribute("srcset", newSet);
-        }
-
-        doc.querySelectorAll("[href],[src],[srcset]").forEach(el => {
-          if (el.hasAttribute("href")) rewriteUrl(el, "href");
-          if (el.hasAttribute("src")) rewriteUrl(el, "src");
-          if (el.hasAttribute("srcset")) rewriteSrcset(el);
-        });
-
-        // Intercept link clicks
-        doc.addEventListener("click", function (e) {
-          const a = e.target.closest("a[data-proxied]");
-          if (a && a.href) {
-            e.preventDefault();
-            const nextUrl = new URL(a.href, location.href).searchParams.get("l");
-            if (nextUrl) {
-              history.pushState(null, "", "?l=" + encodeURIComponent(nextUrl));
-              fetchAndReplace(nextUrl);
-            }
-          }
-        });
-
-        // Inject into current document
-        document.open();
-        document.write("<!DOCTYPE html>" + doc.documentElement.outerHTML);
-        document.close();
-
-      } catch (err) {
-        console.error("Fetch error:", err);
-        alert("Error loading site:\n" + err.message);
+        return new URL(relative, base).href;
+      } catch {
+        return relative;
       }
     }
 
-    function start() {
-      const siteUrl = document.getElementById("siteInput").value.trim();
-      if (!siteUrl.startsWith("http")) {
-        alert("Please enter a valid URL (starting with http or https)");
+    async function fetchAndRender(url) {
+      if (!url) {
+        document.getElementById('content').innerHTML = `
+          <h2>No URL specified</h2>
+          <p>Use ?url=YOUR_URL to fetch a site.</p>
+          <p>Example: <a href="?url=https://example.com">Fetch example.com</a></p>
+        `;
         return;
       }
-      history.replaceState(null, "", "?l=" + encodeURIComponent(siteUrl));
-      fetchAndReplace(siteUrl);
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+
+        const text = await res.text();
+
+        // Parse the fetched HTML
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/html');
+
+        // Set base URL for relative resolving
+        const baseUrl = url;
+
+        // Rewrite all links and resources to point back to this page with ?url=absoluteUrl
+        function rewriteAttr(selector, attr) {
+          doc.querySelectorAll(selector).forEach(el => {
+            const original = el.getAttribute(attr);
+            if (!original) return;
+
+            // Ignore javascript: or mailto:
+            if (original.startsWith('javascript:') || original.startsWith('mailto:') || original.startsWith('#')) return;
+
+            const absoluteUrl = resolveUrl(baseUrl, original);
+            if (attr === 'href' || attr === 'src') {
+              // For <a> tags, rewrite href to this page with ?url=absoluteUrl
+              if (el.tagName.toLowerCase() === 'a' && attr === 'href') {
+                el.setAttribute('href', `?url=${encodeURIComponent(absoluteUrl)}`);
+              } else {
+                // For src or href (like img, script, link), we keep absolute URLs to load resources directly
+                el.setAttribute(attr, absoluteUrl);
+              }
+            }
+          });
+        }
+
+        // Rewrite tags
+        rewriteAttr('a', 'href');
+        rewriteAttr('img', 'src');
+        rewriteAttr('script', 'src');
+        rewriteAttr('link[rel="stylesheet"]', 'href');
+        rewriteAttr('iframe', 'src');
+
+        // Remove base tag if present (could mess with relative URLs)
+        const baseTag = doc.querySelector('base');
+        if (baseTag) baseTag.remove();
+
+        // Inject fetched and rewritten HTML into this page
+        const contentDiv = document.getElementById('content');
+        contentDiv.innerHTML = '';
+        Array.from(doc.head.children).forEach(node => {
+          // Import stylesheets and meta tags from head
+          if (node.tagName.toLowerCase() === 'style' || (node.tagName.toLowerCase() === 'link' && node.rel === 'stylesheet') || node.tagName.toLowerCase() === 'meta' || node.tagName.toLowerCase() === 'title') {
+            document.head.appendChild(node.cloneNode(true));
+          }
+        });
+
+        // Append body content
+        Array.from(doc.body.children).forEach(node => {
+          contentDiv.appendChild(node.cloneNode(true));
+        });
+
+      } catch (e) {
+        document.getElementById('content').innerHTML = `<p style="color:red;">Error: ${e.message}</p>`;
+      }
     }
 
-    // On initial load
-    (function () {
-      const params = new URLSearchParams(window.location.search);
-      const l = params.get("l");
-      if (l) {
-        document.getElementById("inputContainer").style.display = "none";
-        fetchAndReplace(decodeURIComponent(l));
-      }
-    })();
+    // Start
+    const siteUrl = getUrlParam('url');
+    fetchAndRender(siteUrl);
   </script>
 </body>
 </html>
