@@ -2,114 +2,176 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WebRTC P2P Chat</title>
+  <title>Simple P2P Chat with Room Code</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
-    textarea, input { width: 100%; margin: 5px 0; }
-    button { margin-top: 5px; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 20px auto;
+    }
+    textarea, input {
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+      font-family: monospace;
+    }
+    textarea {
+      height: 150px;
+      resize: none;
+    }
+    #message {
+      width: 80%;
+      display: inline-block;
+    }
+    button {
+      padding: 6px 12px;
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
-  <h1>WebRTC P2P Chat</h1>
+  <h1>Simple P2P Chat with Room Code</h1>
 
-  <textarea id="chat" rows="10" readonly placeholder="Chat log will appear here..."></textarea><br>
-  <input id="message" placeholder="Type a message..." />
-  <button onclick="sendMessage()">Send</button>
+  <label>Room Code (6 chars):</label>
+  <input type="text" id="roomCode" maxlength="6" placeholder="Enter or create code" />
+  <button id="joinBtn">Create / Join Room</button>
 
-  <h2>Signal Exchange (Manual)</h2>
-  <label>Your Signal:</label>
-  <textarea id="localSignal" rows="5" readonly></textarea>
-  <button onclick="copySignal()">Copy Signal</button><br><br>
+  <textarea id="chat" readonly placeholder="Chat will appear here"></textarea>
 
-  <label>Paste Remote Signal:</label>
-  <textarea id="remoteSignal" rows="5" placeholder="Paste the other peer's signal here..."></textarea>
-  <button onclick="connect()">Connect</button>
+  <input type="text" id="message" placeholder="Type your message" />
+  <button id="sendBtn" disabled>Send</button>
 
   <script>
-    let localConnection;
+    let peerConnection;
     let dataChannel;
+    let roomCode;
+    const chat = document.getElementById('chat');
+    const messageInput = document.getElementById('message');
+    const sendBtn = document.getElementById('sendBtn');
+    const roomInput = document.getElementById('roomCode');
+    const joinBtn = document.getElementById('joinBtn');
 
-    // Create a new WebRTC peer connection
-    function createConnection() {
-      localConnection = new RTCPeerConnection();
+    // STUN server config (public)
+    const configuration = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
 
-      // Create a data channel for text communication
-      dataChannel = localConnection.createDataChannel("chat");
-      dataChannel.onopen = () => {
-        logMessage("🔗 Data channel open!");
-      };
-      dataChannel.onmessage = (event) => {
-        logMessage("Peer: " + event.data);
-      };
-
-      // Create and set local offer
-      localConnection.onicecandidate = (event) => {
-        if (event.candidate === null) {
-          document.getElementById("localSignal").value = JSON.stringify(localConnection.localDescription);
-        }
-      };
-
-      localConnection.createOffer()
-        .then(offer => localConnection.setLocalDescription(offer))
-        .catch(console.error);
-    }
-
-    createConnection();
-
-    function copySignal() {
-      const signalText = document.getElementById("localSignal").value;
-      navigator.clipboard.writeText(signalText)
-        .then(() => alert("Signal copied to clipboard!"))
-        .catch(err => console.error("Copy failed:", err));
-    }
-
-    function connect() {
-      const remoteSignal = document.getElementById("remoteSignal").value;
-      if (!remoteSignal) {
-        alert("Please paste a remote signal first.");
-        return;
-      }
-      const signal = JSON.parse(remoteSignal);
-      localConnection.setRemoteDescription(signal)
-        .then(() => {
-          if (signal.type === "offer") {
-            localConnection.createAnswer()
-              .then(answer => localConnection.setLocalDescription(answer))
-              .then(() => {
-                document.getElementById("localSignal").value = JSON.stringify(localConnection.localDescription);
-              });
-          }
-        })
-        .catch(err => {
-          console.error("Error setting remote description:", err);
-          alert("Invalid or malformed signal.");
-        });
-
-      // Listen for incoming data channel if not initiator
-      localConnection.ondatachannel = (event) => {
-        dataChannel = event.channel;
-        dataChannel.onmessage = (e) => logMessage("Peer: " + e.data);
-        dataChannel.onopen = () => logMessage("🔗 Data channel open!");
-      };
-    }
-
-    function sendMessage() {
-      const input = document.getElementById("message");
-      const msg = input.value.trim();
-      if (msg && dataChannel && dataChannel.readyState === "open") {
-        dataChannel.send(msg);
-        logMessage("Me: " + msg);
-        input.value = "";
-      } else {
-        alert("Data channel is not open yet.");
-      }
-    }
-
-    function logMessage(msg) {
-      const chat = document.getElementById("chat");
+    function log(msg) {
       chat.value += msg + "\n";
       chat.scrollTop = chat.scrollHeight;
     }
+
+    // Store signaling data in localStorage under keys with roomCode prefix
+    function saveSignal(type, data) {
+      localStorage.setItem(`${roomCode}-${type}`, JSON.stringify(data));
+    }
+
+    // Read signaling data from localStorage
+    function readSignal(type) {
+      const data = localStorage.getItem(`${roomCode}-${type}`);
+      return data ? JSON.parse(data) : null;
+    }
+
+    // Clear signals from localStorage (optional)
+    function clearSignals() {
+      localStorage.removeItem(`${roomCode}-offer`);
+      localStorage.removeItem(`${roomCode}-answer`);
+      localStorage.removeItem(`${roomCode}-iceCandidates`);
+    }
+
+    // Handle incoming ICE candidates stored in localStorage
+    function listenForIceCandidates(peer) {
+      window.addEventListener('storage', (e) => {
+        if (!e.key || !e.newValue) return;
+        if (e.key.startsWith(roomCode) && e.key.includes('iceCandidates')) {
+          const candidates = JSON.parse(e.newValue);
+          for (const c of candidates) {
+            peer.addIceCandidate(new RTCIceCandidate(c)).catch(console.error);
+          }
+        }
+      });
+    }
+
+    joinBtn.onclick = async () => {
+      roomCode = roomInput.value.trim().toUpperCase();
+      if (!roomCode || roomCode.length !== 6) {
+        alert("Enter a 6 character room code.");
+        return;
+      }
+
+      clearSignals();
+
+      peerConnection = new RTCPeerConnection(configuration);
+
+      dataChannel = peerConnection.createDataChannel("chat");
+
+      dataChannel.onopen = () => {
+        log("System: Data channel open, you can chat now.");
+        sendBtn.disabled = false;
+      };
+
+      dataChannel.onmessage = (event) => {
+        log("Peer: " + event.data);
+      };
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          // Save ICE candidates array
+          let iceCandidates = readSignal('iceCandidates') || [];
+          iceCandidates.push(event.candidate);
+          saveSignal('iceCandidates', iceCandidates);
+        }
+      };
+
+      // If offer already exists, join as answerer
+      const existingOffer = readSignal('offer');
+
+      if (!existingOffer) {
+        // Create offer (host)
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        saveSignal('offer', offer);
+        log("System: Created offer, waiting for answer...");
+      } else {
+        // Joiner: set remote offer, create answer
+        await peerConnection.setRemoteDescription(existingOffer);
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        saveSignal('answer', answer);
+        log("System: Joined room, sent answer.");
+      }
+
+      // Listen for remote description changes
+      window.addEventListener('storage', async (e) => {
+        if (!e.key || !e.newValue) return;
+        if (e.key === `${roomCode}-answer` && peerConnection.signalingState === 'have-local-offer') {
+          const answer = JSON.parse(e.newValue);
+          await peerConnection.setRemoteDescription(answer);
+          log("System: Received answer, connection in progress...");
+        }
+        if (e.key === `${roomCode}-iceCandidates`) {
+          const candidates = JSON.parse(e.newValue);
+          for (const c of candidates) {
+            try {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(c));
+              log("System: Added remote ICE candidate.");
+            } catch(e) {
+              //ignore
+            }
+          }
+        }
+      });
+
+      listenForIceCandidates(peerConnection);
+    };
+
+    sendBtn.onclick = () => {
+      const msg = messageInput.value.trim();
+      if (!msg || !dataChannel || dataChannel.readyState !== 'open') return;
+      dataChannel.send(msg);
+      log("Me: " + msg);
+      messageInput.value = '';
+    };
   </script>
 </body>
 </html>
