@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Universal Web Viewer</title>
+  <title>Universal Web Viewer (CORS-Enabled)</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     input { width: 400px; padding: 10px; }
@@ -19,15 +19,18 @@
 
   <script>
     async function fetchAndReplace(targetUrl) {
-      try {
-        const response = await fetch(targetUrl);
-        if (!response.ok) throw new Error('Failed to fetch: ' + targetUrl);
+      const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl);
 
-        let html = await response.text();
+      try {
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Proxy fetch failed: ' + proxyUrl);
+
+        const result = await response.json(); // AllOrigins returns JSON: { contents: "<html>" }
+        const html = result.contents;
+
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
-        // Rewrite links to go through viewer
         function rewriteUrl(el, attr) {
           const val = el.getAttribute(attr);
           if (!val) return;
