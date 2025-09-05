@@ -1,177 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Simple P2P Chat with Room Code</title>
+  <title>P2P Chat with PeerJS (Free Server)</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 20px auto;
-    }
-    textarea, input {
-      width: 100%;
-      box-sizing: border-box;
-      margin-bottom: 10px;
-      font-family: monospace;
-    }
-    textarea {
-      height: 150px;
-      resize: none;
-    }
-    #message {
-      width: 80%;
-      display: inline-block;
-    }
-    button {
-      padding: 6px 12px;
-      display: inline-block;
-    }
+    body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+    #messages { border: 1px solid #ccc; height: 300px; overflow-y: auto; padding: 10px; }
+    #peer-id { font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Simple P2P Chat with Room Code</h1>
 
-  <label>Room Code (6 chars):</label>
-  <input type="text" id="roomCode" maxlength="6" placeholder="Enter or create code" />
-  <button id="joinBtn">Create / Join Room</button>
+<h1>P2P Chat</h1>
 
-  <textarea id="chat" readonly placeholder="Chat will appear here"></textarea>
+<div>Your Peer ID: <span id="peer-id">...</span></div>
 
-  <input type="text" id="message" placeholder="Type your message" />
-  <button id="sendBtn" disabled>Send</button>
+<label for="connect-id">Connect to Peer ID:</label>
+<input id="connect-id" type="text" placeholder="Enter peer ID"/>
+<button id="connect-btn">Connect</button>
 
-  <script>
-    let peerConnection;
-    let dataChannel;
-    let roomCode;
-    const chat = document.getElementById('chat');
-    const messageInput = document.getElementById('message');
-    const sendBtn = document.getElementById('sendBtn');
-    const roomInput = document.getElementById('roomCode');
-    const joinBtn = document.getElementById('joinBtn');
+<div id="messages"></div>
 
-    // STUN server config (public)
-    const configuration = {
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-    };
+<input id="message-input" type="text" placeholder="Type a message..." disabled/>
+<button id="send-btn" disabled>Send</button>
 
-    function log(msg) {
-      chat.value += msg + "\n";
-      chat.scrollTop = chat.scrollHeight;
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
+<script>
+  // Use default free public PeerJS server
+  const peer = new Peer();
+
+  const peerIdSpan = document.getElementById('peer-id');
+  const connectBtn = document.getElementById('connect-btn');
+  const connectIdInput = document.getElementById('connect-id');
+  const messagesDiv = document.getElementById('messages');
+  const messageInput = document.getElementById('message-input');
+  const sendBtn = document.getElementById('send-btn');
+
+  let conn;
+
+  function logMessage(msg, fromSelf = false) {
+    const p = document.createElement('p');
+    p.textContent = (fromSelf ? "You: " : "Peer: ") + msg;
+    p.style.textAlign = fromSelf ? 'right' : 'left';
+    messagesDiv.appendChild(p);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  peer.on('open', id => {
+    peerIdSpan.textContent = id;
+  });
+
+  connectBtn.onclick = () => {
+    if (conn) {
+      conn.close();
     }
+    const peerIdToConnect = connectIdInput.value.trim();
+    if (!peerIdToConnect) return alert("Enter a peer ID");
+    conn = peer.connect(peerIdToConnect);
 
-    // Store signaling data in localStorage under keys with roomCode prefix
-    function saveSignal(type, data) {
-      localStorage.setItem(`${roomCode}-${type}`, JSON.stringify(data));
+    conn.on('open', () => {
+      logMessage('Connected!', true);
+      messageInput.disabled = false;
+      sendBtn.disabled = false;
+    });
+
+    conn.on('data', data => {
+      logMessage(data);
+    });
+
+    conn.on('close', () => {
+      logMessage('Connection closed');
+      messageInput.disabled = true;
+      sendBtn.disabled = true;
+    });
+  };
+
+  peer.on('connection', connection => {
+    if (conn) {
+      conn.close();
     }
+    conn = connection;
 
-    // Read signaling data from localStorage
-    function readSignal(type) {
-      const data = localStorage.getItem(`${roomCode}-${type}`);
-      return data ? JSON.parse(data) : null;
-    }
+    conn.on('data', data => {
+      logMessage(data);
+    });
 
-    // Clear signals from localStorage (optional)
-    function clearSignals() {
-      localStorage.removeItem(`${roomCode}-offer`);
-      localStorage.removeItem(`${roomCode}-answer`);
-      localStorage.removeItem(`${roomCode}-iceCandidates`);
-    }
+    conn.on('open', () => {
+      logMessage('Peer connected');
+      messageInput.disabled = false;
+      sendBtn.disabled = false;
+    });
 
-    // Handle incoming ICE candidates stored in localStorage
-    function listenForIceCandidates(peer) {
-      window.addEventListener('storage', (e) => {
-        if (!e.key || !e.newValue) return;
-        if (e.key.startsWith(roomCode) && e.key.includes('iceCandidates')) {
-          const candidates = JSON.parse(e.newValue);
-          for (const c of candidates) {
-            peer.addIceCandidate(new RTCIceCandidate(c)).catch(console.error);
-          }
-        }
-      });
-    }
+    conn.on('close', () => {
+      logMessage('Connection closed');
+      messageInput.disabled = true;
+      sendBtn.disabled = true;
+    });
+  });
 
-    joinBtn.onclick = async () => {
-      roomCode = roomInput.value.trim().toUpperCase();
-      if (!roomCode || roomCode.length !== 6) {
-        alert("Enter a 6 character room code.");
-        return;
-      }
+  sendBtn.onclick = () => {
+    const message = messageInput.value.trim();
+    if (!message || !conn || !conn.open) return;
+    conn.send(message);
+    logMessage(message, true);
+    messageInput.value = '';
+  };
 
-      clearSignals();
+  messageInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendBtn.click();
+  });
+</script>
 
-      peerConnection = new RTCPeerConnection(configuration);
-
-      dataChannel = peerConnection.createDataChannel("chat");
-
-      dataChannel.onopen = () => {
-        log("System: Data channel open, you can chat now.");
-        sendBtn.disabled = false;
-      };
-
-      dataChannel.onmessage = (event) => {
-        log("Peer: " + event.data);
-      };
-
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          // Save ICE candidates array
-          let iceCandidates = readSignal('iceCandidates') || [];
-          iceCandidates.push(event.candidate);
-          saveSignal('iceCandidates', iceCandidates);
-        }
-      };
-
-      // If offer already exists, join as answerer
-      const existingOffer = readSignal('offer');
-
-      if (!existingOffer) {
-        // Create offer (host)
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        saveSignal('offer', offer);
-        log("System: Created offer, waiting for answer...");
-      } else {
-        // Joiner: set remote offer, create answer
-        await peerConnection.setRemoteDescription(existingOffer);
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        saveSignal('answer', answer);
-        log("System: Joined room, sent answer.");
-      }
-
-      // Listen for remote description changes
-      window.addEventListener('storage', async (e) => {
-        if (!e.key || !e.newValue) return;
-        if (e.key === `${roomCode}-answer` && peerConnection.signalingState === 'have-local-offer') {
-          const answer = JSON.parse(e.newValue);
-          await peerConnection.setRemoteDescription(answer);
-          log("System: Received answer, connection in progress...");
-        }
-        if (e.key === `${roomCode}-iceCandidates`) {
-          const candidates = JSON.parse(e.newValue);
-          for (const c of candidates) {
-            try {
-              await peerConnection.addIceCandidate(new RTCIceCandidate(c));
-              log("System: Added remote ICE candidate.");
-            } catch(e) {
-              //ignore
-            }
-          }
-        }
-      });
-
-      listenForIceCandidates(peerConnection);
-    };
-
-    sendBtn.onclick = () => {
-      const msg = messageInput.value.trim();
-      if (!msg || !dataChannel || dataChannel.readyState !== 'open') return;
-      dataChannel.send(msg);
-      log("Me: " + msg);
-      messageInput.value = '';
-    };
-  </script>
 </body>
 </html>
