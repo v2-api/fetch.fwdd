@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Phone Proxy</title>
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <style>
+    html, body {
+      margin:0; padding:0;
+      height:100%; width:100%;
+      overflow:hidden; /* remove overscroll */
+      font-family: system-ui, sans-serif;
+      background:#fafafa;
+      display:flex; justify-content:center; align-items:center;
+    }
+    .card {
+      background:#fff; border:1px solid #ddd;
+      border-radius:12px; padding:2rem;
+      box-shadow:0 4px 12px rgba(0,0,0,0.05);
+      width:90%; max-width:400px;
+      text-align:center;
+    }
+    h1 { font-size:1.3rem; margin:0 0 1rem; }
+    input, button {
+      font-size:1rem; padding:0.6rem 0.8rem;
+      border-radius:8px; border:1px solid #ccc;
+      margin:0.4rem 0; box-sizing:border-box;
+      width:100%;
+    }
+    button {
+      background:#0b74de; color:white; border:none; cursor:pointer;
+    }
+    button:hover { background:#095ab0; }
+    .link { color:#0b74de; font-size:0.9rem; cursor:pointer; margin-top:0.6rem; display:inline-block; }
+    .status { margin-bottom:1rem; font-size:0.95rem; color:#333; }
+    #searchBox { display:flex; gap:0.5rem; margin-top:1rem; }
+    #searchBox input { flex:1; }
+    #result {
+      text-align:left; white-space:pre-wrap; font-family:monospace;
+      font-size:0.85rem; margin-top:1rem;
+      background:#f6f6f6; padding:0.8rem; border-radius:8px;
+      max-height:250px; overflow:auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="phoneUI" hidden>
+    <h1>Your Code</h1>
+    <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
+    <div class="link" id="switchToComputer">I'm not on mobile</div>
+  </div>
+
+  <div class="card" id="computerUI" hidden>
+    <h1>Enter Phone Code</h1>
+    <input id="codeInput" placeholder="6-digit code"/>
+    <button id="connectBtn">Connect</button>
+    <div class="link" id="switchToPhone">I'm not on computer</div>
+  </div>
+
+  <div class="card" id="connectedUI" hidden>
+    <div class="status">✅ Connected • Uptime <span id="uptime">0s</span></div>
+    <div id="searchBox">
+      <input id="urlInput" placeholder="Enter URL to fetch"/>
+      <button id="sendBtn">Search</button>
+    </div>
+    <div id="result"></div>
+  </div>
+
+<script>
+(() => {
+  const phoneUI = document.getElementById('phoneUI');
+  const computerUI = document.getElementById('computerUI');
+  const connectedUI = document.getElementById('connectedUI');
+  const phoneCodeEl = document.getElementById('phoneCode');
+  const switchToComputer = document.getElementById('switchToComputer');
+  const switchToPhone = document.getElementById('switchToPhone');
+  const codeInput = document.getElementById('codeInput');
+  const connectBtn = document.getElementById('connectBtn');
+  const uptimeEl = document.getElementById('uptime');
+  const urlInput = document.getElementById('urlInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const resultEl = document.getElementById('result');
+
+  let peer = null;
+  let conn = null;
+  let uptimeTimer = null;
+  let startTime = null;
+  let myCode = null;
+
+  function getOrCreateCode() {
+    if (myCode) return myCode;
+    myCode = String(Math.floor(100000 + Math.random() * 900000));
+    return myCode;
+  }
+
+  // Detect role
+  let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
+
+  function showPhoneUI() {
+    role = 'phone';
+    phoneUI.hidden = false;
+    computerUI.hidden = true;
+    connectedUI.hidden = true;
+    const code = getOrCreateCode();
+    phoneCodeEl.textContent = code;
+    setupPeer(code);
+  }
+  function showComputerUI() {
+    role = 'computer';
+    phoneUI.hidden = true;
+    computerUI.hidden = false;
+    connectedUI.hidden = true;
+    setupPeer(); // no ID
+  }
+
+  switchToComputer.onclick = () => showComputerUI();
+  switchToPhone.onclick = () => showPhoneUI();
+
+  connectBtn.onclick = () => {
+    if (!peer) return;
+    const target = codeInput.value.trim();
+    if (!target) return alert("Enter a code.");
+    conn = peer.connect(target, {reliable:true});
+    conn.on('open', () => onConnected(conn));
+    conn.on('data', onData);
+  };
+
+  function setupPeer(id) {
+    if (peer) return;
+    peer = new Peer(id);
+    peer.on('open', pid => console.log("Peer open:", pid));
+    peer.on('connection', dc => {
+      conn = dc;
+      conn.on('open', () => onConnected(conn));
+      conn.on('data', onData);
+    });
+  }
+
+  function onConnected(dc) {
+    phoneUI.hidden = true;
+    computerUI.hidden = true;
+    connectedUI.hidden = false;
+    startTime = Date.now();
+    if (uptimeTimer) clearInterval(uptimeTimer);
+    uptimeTimer = setInterval(() => {
+      const secs = Math.floor((Date.now()-startTime)/1000);
+      uptimeEl.textContent = secs+"s";
+    }, 1000);
+  }
+
+  async function onData(data) {
+    if (role === 'computer') {
+      if (data.type === 'fetch-response') {
+        resultEl.textContent = `Status: ${data.status}\n\n${data.bodyText}`;
+      }
+    } else if (role === 'phone') {
+      if (data.type === 'fetch-request') {
+        try {
+          // Use CORS proxy here
+          const proxied = "https://corsproxy.io/?" + encodeURIComponent(data.url);
+          const r = await fetch(proxied, {method:"GET"});
+          const text = await r.text();
+          conn.send({type:'fetch-response', status:r.status, bodyText:text});
+        } catch(e) {
+          conn.send({type:'fetch-response', status:'error', bodyText:String(e)});
+        }
+      }
+    }
+  }
+
+  sendBtn.onclick = () => {
+    const url = urlInput.value.trim();
+    if (!url) return;
+    conn.send({type:'fetch-request', url});
+    resultEl.textContent = "Fetching...";
+  };
+  urlInput.addEventListener("keypress", e => {
+    if (e.key === "Enter") sendBtn.click();
+  });
+
+  // initial
+  if (role === 'phone') showPhoneUI(); else showComputerUI();
+})();
+</script>
+</body>
+</html>
