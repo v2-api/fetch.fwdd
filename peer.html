@@ -9,30 +9,26 @@
   html, body {
     height:100%;
     margin:0;
-    display:flex;
-    justify-content:center;
-    align-items:center;
     background:#121212;
     color:#eee;
     font-family: system-ui, sans-serif;
+    overflow:hidden;
   }
-  .card {
-    background:#1e1e1e;
-    border:1px solid #333;
-    border-radius:12px;
+  .centerBox {
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    height:100%;
+    text-align:center;
     padding:1rem;
-    box-shadow:0 4px 12px rgba(0,0,0,0.4);
-    width:100%; max-width:900px;
   }
-  h1 { font-size:1.2rem; margin:0 0 1rem; color:#fff; }
   input, button {
     font-size:1rem;
     padding:0.6rem 0.8rem;
     border-radius:8px;
     border:1px solid #555;
     margin:0.4rem 0;
-    box-sizing:border-box;
-    width:100%;
     background:#2a2a2a;
     color:#eee;
   }
@@ -44,21 +40,26 @@
   button:disabled { opacity:0.6; cursor:not-allowed; }
   button:hover:enabled { background:#095ab0; }
   .link { color:#4aa3ff; font-size:0.9rem; cursor:pointer; margin-top:0.6rem; display:inline-block; }
-  .status { margin-bottom:0.8rem; font-size:0.95rem; color:#aaa; }
+  #topbar {
+    display:flex;
+    gap:0.5rem;
+    padding:0.6rem;
+    background:#1e1e1e;
+    border-bottom:1px solid #333;
+  }
+  #urlInput { flex:1; }
   #browser {
-    margin-top:1rem;
-    background:#111;
-    border-radius:8px;
-    padding:1rem;
-    min-height:400px;
+    height:calc(100% - 3rem);
     overflow:auto;
+    background:#111;
+    padding:1rem;
   }
   a { color:#4aa3ff; }
 </style>
 </head>
 <body>
   <!-- Phone UI -->
-  <div class="card" id="phoneUI" hidden>
+  <div class="centerBox" id="phoneUI" hidden>
     <h1>Your Code</h1>
     <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
     <button id="resetCodeBtn">Reset Code</button>
@@ -66,7 +67,7 @@
   </div>
 
   <!-- Computer UI -->
-  <div class="card" id="computerUI" hidden>
+  <div class="centerBox" id="computerUI" hidden>
     <h1>Enter Phone Code</h1>
     <input id="codeInput" placeholder="6-digit code"/>
     <button id="connectBtn">Connect</button>
@@ -74,15 +75,12 @@
   </div>
 
   <!-- Connected UI -->
-  <div class="card" id="connectedUI" hidden>
-    <div class="status" id="statusLine">⏳ Connecting...</div>
-    <div id="searchSection" hidden>
-      <div style="display:flex; gap:0.5rem;">
-        <input id="urlInput" placeholder="Enter URL to fetch" style="flex:1"/>
-        <button id="sendBtn">Go</button>
-      </div>
-      <div id="browser"></div>
+  <div id="connectedUI" hidden style="height:100%; display:flex; flex-direction:column;">
+    <div id="topbar" hidden>
+      <input id="urlInput" placeholder="Enter URL to fetch"/>
+      <button id="sendBtn">Go</button>
     </div>
+    <div id="browser"></div>
   </div>
 
 <script>
@@ -96,11 +94,10 @@
   const switchToPhone = document.getElementById('switchToPhone');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
-  const statusLine = document.getElementById('statusLine');
   const urlInput = document.getElementById('urlInput');
   const sendBtn = document.getElementById('sendBtn');
   const browserEl = document.getElementById('browser');
-  const searchSection = document.getElementById('searchSection');
+  const topbar = document.getElementById('topbar');
 
   let peer = null;
   let conn = null;
@@ -139,7 +136,7 @@
     role = 'computer';
     resetUI();
     computerUI.hidden = false;
-    setupPeer(); // random ID
+    setupPeer();
   }
 
   function showConnectedUI() {
@@ -171,7 +168,6 @@
   function setupPeer(id) {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     peer = new Peer(id);
-    peer.on('open', () => console.log("Peer open:", id || "(random)"));
     peer.on('connection', dc => {
       conn = dc;
       dc.on('open', () => onConnected(dc));
@@ -188,24 +184,20 @@
 
     if (uptimeTimer) clearInterval(uptimeTimer);
     uptimeTimer = setInterval(() => {
-      const secs = Math.floor((Date.now()-startTime)/1000);
-      const uptimeText = secs+"s";
-      statusLine.textContent = `✅ Connected • Uptime ${uptimeText}`;
       if (role === 'computer' && Date.now()-lastPong > 20000) onDisconnected();
     }, 1000);
 
     if (pingTimer) clearInterval(pingTimer);
     if (role === 'computer') {
-      pingTimer = setInterval(() => {
-        if (conn && conn.open) conn.send({type:'ping'});
-      }, 10000);
+      pingTimer = setInterval(() => { if (conn && conn.open) conn.send({type:'ping'}); }, 10000);
     }
 
     if (role === 'computer') {
-      searchSection.hidden = false;
+      topbar.hidden = false;
       connectBtn.disabled = false;
     } else {
-      searchSection.hidden = true;
+      topbar.hidden = true;
+      browserEl.innerHTML = "<div style='padding:1rem'>✅ Connected (phone proxy active)</div>";
     }
   }
 
@@ -244,7 +236,6 @@
     const doc = new DOMParser().parseFromString(html, "text/html");
     const base = new URL(baseUrl);
 
-    // Fix relative links
     doc.querySelectorAll("[href]").forEach(el => {
       const val = el.getAttribute("href");
       if (val && !val.startsWith("http") && !val.startsWith("#")) {
@@ -278,9 +269,7 @@
     browserEl.textContent = "Fetching...";
   };
 
-  urlInput.addEventListener("keypress", e => {
-    if (e.key === "Enter") sendBtn.click();
-  });
+  urlInput.addEventListener("keypress", e => { if (e.key === "Enter") sendBtn.click(); });
 
   if (role === 'phone') showPhoneUI(); else showComputerUI();
 })();
