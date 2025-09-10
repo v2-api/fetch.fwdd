@@ -19,7 +19,7 @@
       background:#fff;
       border:1px solid #ddd;
       border-radius:12px;
-      padding:1.6rem;
+      padding:1.5rem;
       box-shadow:0 4px 12px rgba(0,0,0,0.05);
       width:100%; max-width:400px;
       text-align:center;
@@ -106,9 +106,7 @@
 
   function getOrCreateCode(reset=false) {
     if (!reset && myCode) return myCode;
-    if (!reset) {
-      myCode = localStorage.getItem("phoneCode");
-    }
+    if (!reset) myCode = localStorage.getItem("phoneCode");
     if (!myCode || reset) {
       myCode = String(Math.floor(100000 + Math.random() * 900000));
       localStorage.setItem("phoneCode", myCode);
@@ -155,10 +153,10 @@
     const target = codeInput.value.trim();
     if (!target) return alert("Enter a code.");
     if (target === myCode) return alert("Cannot connect to your own code!");
-    conn = peer.connect(target, {reliable:true});
-    conn.on('open', () => onConnected(conn));
-    conn.on('data', onData);
-    conn.on('close', onDisconnected);
+    const dc = peer.connect(target, {reliable:true});
+    dc.on('open', () => onConnected(dc));
+    dc.on('data', onData);
+    dc.on('close', onDisconnected);
   };
 
   function setupPeer(id) {
@@ -166,13 +164,14 @@
     peer = new Peer(id); // if id undefined → random for computer
     peer.on('connection', dc => {
       conn = dc;
-      conn.on('open', () => onConnected(conn));
-      conn.on('data', onData);
-      conn.on('close', onDisconnected);
+      dc.on('open', () => onConnected(dc));
+      dc.on('data', onData);
+      dc.on('close', onDisconnected);
     });
   }
 
   function onConnected(dc) {
+    conn = dc;
     showConnectedUI();
     startTime = Date.now();
 
