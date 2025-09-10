@@ -9,16 +9,17 @@
     html, body {
       margin:0; padding:0;
       height:100%; width:100%;
-      overflow:hidden; /* remove overscroll */
+      overflow:hidden;
       font-family: system-ui, sans-serif;
       background:#fafafa;
       display:flex; justify-content:center; align-items:center;
+      padding:1rem;
     }
     .card {
       background:#fff; border:1px solid #ddd;
       border-radius:12px; padding:2rem;
       box-shadow:0 4px 12px rgba(0,0,0,0.05);
-      width:90%; max-width:400px;
+      width:100%; max-width:400px;
       text-align:center;
     }
     h1 { font-size:1.3rem; margin:0 0 1rem; }
@@ -43,12 +44,14 @@
   </style>
 </head>
 <body>
+  <!-- Phone UI -->
   <div class="card" id="phoneUI" hidden>
     <h1>Your Code</h1>
     <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
     <div class="link" id="switchToComputer">I'm not on mobile</div>
   </div>
 
+  <!-- Computer UI -->
   <div class="card" id="computerUI" hidden>
     <h1>Enter Phone Code</h1>
     <input id="codeInput" placeholder="6-digit code"/>
@@ -56,9 +59,9 @@
     <div class="link" id="switchToPhone">I'm not on computer</div>
   </div>
 
+  <!-- Connected UI -->
   <div class="card" id="connectedUI" hidden>
     <div class="status" id="statusLine">✅ Connected • Uptime <span id="uptime">0s</span></div>
-
     <div id="searchSection" hidden>
       <input id="urlInput" placeholder="Enter URL to fetch"/>
       <button id="sendBtn">Search</button>
@@ -66,16 +69,27 @@
     </div>
   </div>
 
+  <!-- Disconnected UI -->
+  <div class="card" id="disconnectedUI" hidden>
+    <h1>Disconnected</h1>
+    <p style="margin:1rem 0;">⚠️ Connection lost</p>
+    <button id="reconnectBtn">Reconnect</button>
+  </div>
+
 <script>
 (() => {
   const phoneUI = document.getElementById('phoneUI');
   const computerUI = document.getElementById('computerUI');
   const connectedUI = document.getElementById('connectedUI');
+  const disconnectedUI = document.getElementById('disconnectedUI');
+
   const phoneCodeEl = document.getElementById('phoneCode');
   const switchToComputer = document.getElementById('switchToComputer');
   const switchToPhone = document.getElementById('switchToPhone');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
+  const reconnectBtn = document.getElementById('reconnectBtn');
+
   const uptimeEl = document.getElementById('uptime');
   const statusLine = document.getElementById('statusLine');
   const urlInput = document.getElementById('urlInput');
@@ -90,6 +104,7 @@
   let startTime = null;
   let myCode = null;
   let lastPong = Date.now();
+  let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
 
   function getOrCreateCode() {
     if (myCode) return myCode;
@@ -97,80 +112,101 @@
     return myCode;
   }
 
-  // Detect role
-  let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
+  function resetUI() {
+    phoneUI.hidden = true;
+    computerUI.hidden = true;
+    connectedUI.hidden = true;
+    disconnectedUI.hidden = true;
+  }
 
   function showPhoneUI() {
     role = 'phone';
+    resetUI();
     phoneUI.hidden = false;
-    computerUI.hidden = true;
-    connectedUI.hidden = true;
-    const code = getOrCreateCode();
-    phoneCodeEl.textContent = code;
-    setupPeer(code);
+    phoneCodeEl.textContent = getOrCreateCode();
+    setupPeer(myCode);
   }
   function showComputerUI() {
     role = 'computer';
-    phoneUI.hidden = true;
+    resetUI();
     computerUI.hidden = false;
-    connectedUI.hidden = true;
-    setupPeer(); // no ID
+    setupPeer(); // random id
+  }
+  function showConnectedUI() {
+    resetUI();
+    connectedUI.hidden = false;
+  }
+  function showDisconnectedUI() {
+    resetUI();
+    disconnectedUI.hidden = false;
   }
 
   switchToComputer.onclick = () => showComputerUI();
   switchToPhone.onclick = () => showPhoneUI();
+  reconnectBtn.onclick = () => {
+    if (role === 'phone') showPhoneUI();
+    else showComputerUI();
+  };
 
   connectBtn.onclick = () => {
     if (!peer) return;
     const target = codeInput.value.trim();
     if (!target) return alert("Enter a code.");
+    if (target === myCode) return alert("Cannot connect to your own code!");
     conn = peer.connect(target, {reliable:true});
     conn.on('open', () => onConnected(conn));
     conn.on('data', onData);
+    conn.on('close', onDisconnected);
   };
 
   function setupPeer(id) {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
-    peer = new Peer(id);
+    peer = new Peer(id, {
+      host: "peerjs.com",
+      port: 443,
+      path: "/",
+      secure: true
+    });
     peer.on('connection', dc => {
       conn = dc;
       conn.on('open', () => onConnected(conn));
       conn.on('data', onData);
+      conn.on('close', onDisconnected);
     });
   }
 
   function onConnected(dc) {
-    phoneUI.hidden = true;
-    computerUI.hidden = true;
-    connectedUI.hidden = false;
+    showConnectedUI();
     startTime = Date.now();
     if (uptimeTimer) clearInterval(uptimeTimer);
     uptimeTimer = setInterval(() => {
       const secs = Math.floor((Date.now()-startTime)/1000);
       uptimeEl.textContent = secs+"s";
-      // check pong timeout
       if (role === 'computer' && Date.now()-lastPong > 20000) {
-        statusLine.textContent = "⚠️ Connection lost";
+        onDisconnected();
       }
     }, 1000);
 
-    // ping/pong loop
     if (pingTimer) clearInterval(pingTimer);
     if (role === 'computer') {
       pingTimer = setInterval(() => {
-        if (conn && conn.open) {
-          conn.send({type:'ping'});
-        }
+        if (conn && conn.open) conn.send({type:'ping'});
       }, 10000);
     }
 
-    // only computer sees search
     if (role === 'computer') {
       searchSection.hidden = false;
     } else {
       searchSection.hidden = true;
       statusLine.textContent = "✅ Connected • Uptime " + uptimeEl.textContent;
     }
+  }
+
+  function onDisconnected() {
+    if (uptimeTimer) clearInterval(uptimeTimer);
+    if (pingTimer) clearInterval(pingTimer);
+    uptimeTimer = pingTimer = null;
+    showDisconnectedUI();
   }
 
   async function onData(data) {
@@ -207,7 +243,6 @@
     if (e.key === "Enter") sendBtn.click();
   });
 
-  // initial
   if (role === 'phone') showPhoneUI(); else showComputerUI();
 })();
 </script>
