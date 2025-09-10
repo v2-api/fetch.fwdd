@@ -34,8 +34,6 @@
     button:hover { background:#095ab0; }
     .link { color:#0b74de; font-size:0.9rem; cursor:pointer; margin-top:0.6rem; display:inline-block; }
     .status { margin-bottom:1rem; font-size:0.95rem; color:#333; }
-    #searchBox { display:flex; gap:0.5rem; margin-top:1rem; }
-    #searchBox input { flex:1; }
     #result {
       text-align:left; white-space:pre-wrap; font-family:monospace;
       font-size:0.85rem; margin-top:1rem;
@@ -59,12 +57,13 @@
   </div>
 
   <div class="card" id="connectedUI" hidden>
-    <div class="status">✅ Connected • Uptime <span id="uptime">0s</span></div>
-    <div id="searchBox">
+    <div class="status" id="statusLine">✅ Connected • Uptime <span id="uptime">0s</span></div>
+
+    <div id="searchSection" hidden>
       <input id="urlInput" placeholder="Enter URL to fetch"/>
       <button id="sendBtn">Search</button>
+      <div id="result"></div>
     </div>
-    <div id="result"></div>
   </div>
 
 <script>
@@ -78,15 +77,19 @@
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
   const uptimeEl = document.getElementById('uptime');
+  const statusLine = document.getElementById('statusLine');
   const urlInput = document.getElementById('urlInput');
   const sendBtn = document.getElementById('sendBtn');
   const resultEl = document.getElementById('result');
+  const searchSection = document.getElementById('searchSection');
 
   let peer = null;
   let conn = null;
   let uptimeTimer = null;
+  let pingTimer = null;
   let startTime = null;
   let myCode = null;
+  let lastPong = Date.now();
 
   function getOrCreateCode() {
     if (myCode) return myCode;
@@ -127,18 +130,14 @@
   };
 
   function setupPeer(id) {
-  if (peer) {
-    try { peer.destroy(); } catch(e) {}
-    peer = null;
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    peer = new Peer(id);
+    peer.on('connection', dc => {
+      conn = dc;
+      conn.on('open', () => onConnected(conn));
+      conn.on('data', onData);
+    });
   }
-  peer = new Peer(id);
-  peer.on('open', pid => console.log("Peer open:", pid));
-  peer.on('connection', dc => {
-    conn = dc;
-    conn.on('open', () => onConnected(conn));
-    conn.on('data', onData);
-  });
-}
 
   function onConnected(dc) {
     phoneUI.hidden = true;
@@ -149,18 +148,42 @@
     uptimeTimer = setInterval(() => {
       const secs = Math.floor((Date.now()-startTime)/1000);
       uptimeEl.textContent = secs+"s";
+      // check pong timeout
+      if (role === 'computer' && Date.now()-lastPong > 20000) {
+        statusLine.textContent = "⚠️ Connection lost";
+      }
     }, 1000);
+
+    // ping/pong loop
+    if (pingTimer) clearInterval(pingTimer);
+    if (role === 'computer') {
+      pingTimer = setInterval(() => {
+        if (conn && conn.open) {
+          conn.send({type:'ping'});
+        }
+      }, 10000);
+    }
+
+    // only computer sees search
+    if (role === 'computer') {
+      searchSection.hidden = false;
+    } else {
+      searchSection.hidden = true;
+      statusLine.textContent = "✅ Connected • Uptime " + uptimeEl.textContent;
+    }
   }
 
   async function onData(data) {
     if (role === 'computer') {
       if (data.type === 'fetch-response') {
         resultEl.textContent = `Status: ${data.status}\n\n${data.bodyText}`;
+      } else if (data.type === 'pong') {
+        lastPong = Date.now();
+        statusLine.innerHTML = `✅ Connected • Uptime <span id="uptime">${uptimeEl.textContent}</span>`;
       }
     } else if (role === 'phone') {
       if (data.type === 'fetch-request') {
         try {
-          // Use CORS proxy here
           const proxied = "https://corsproxy.io/?" + encodeURIComponent(data.url);
           const r = await fetch(proxied, {method:"GET"});
           const text = await r.text();
@@ -168,6 +191,8 @@
         } catch(e) {
           conn.send({type:'fetch-response', status:'error', bodyText:String(e)});
         }
+      } else if (data.type === 'ping') {
+        conn.send({type:'pong'});
       }
     }
   }
