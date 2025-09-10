@@ -3,221 +3,470 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Phone Proxy</title>
+<title>Phone Proxy — stable</title>
 <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <style>
-  html, body {height:100%;margin:0;display:flex;justify-content:center;align-items:center;background:#fafafa;font-family:system-ui,sans-serif;}
-  .card {background:#fff;border:1px solid #ddd;border-radius:12px;padding:1.5rem;box-shadow:0 4px 12px rgba(0,0,0,0.05);width:100%;max-width:400px;text-align:center;}
-  h1 {font-size:1.3rem;margin:0 0 1rem;}
-  input, button {font-size:1rem;padding:0.6rem 0.8rem;border-radius:8px;border:1px solid #ccc;margin:0.4rem 0;box-sizing:border-box;width:100%;}
-  button {background:#0b74de;color:white;border:none;cursor:pointer;}
-  button:disabled {background:#ccc;cursor:not-allowed;}
-  button:hover:not(:disabled) {background:#095ab0;}
-  .link {color:#0b74de;font-size:0.9rem;cursor:pointer;margin-top:0.6rem;display:inline-block;}
-  .status {margin-bottom:1rem;font-size:0.95rem;color:#333;}
-  #result {text-align:left;white-space:pre-wrap;font-family:monospace;font-size:0.85rem;margin-top:1rem;background:#f6f6f6;padding:0.8rem;border-radius:8px;max-height:250px;overflow:auto;}
+  html,body{height:100%;margin:0;display:flex;justify-content:center;align-items:center;background:#fafafa;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+  .card{background:#fff;border:1px solid #e6e6e6;border-radius:12px;padding:1.2rem 1.2rem;width:100%;max-width:420px;box-shadow:0 6px 18px rgba(0,0,0,0.06);text-align:center}
+  h1{font-size:1.25rem;margin:0 0 .75rem}
+  input,button{width:100%;box-sizing:border-box;padding:.6rem;border-radius:8px;border:1px solid #d0d0d0;margin:.45rem 0;font-size:1rem}
+  button{background:#0b74de;color:#fff;border:0;cursor:pointer}
+  button:disabled{background:#cfcfcf;color:#666;cursor:not-allowed}
+  .link{color:#0b74de;cursor:pointer;font-size:.92rem;margin-top:.5rem;display:inline-block}
+  .status{margin-bottom:.8rem;font-size:.95rem;color:#222}
+  #result{margin-top:.8rem;text-align:left;white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,monospace;background:#f6f6f6;padding:.6rem;border-radius:8px;max-height:240px;overflow:auto;font-size:.88rem}
+  .row{display:flex;gap:.6rem}
+  @media (max-width:420px){ .card{padding:1rem} }
 </style>
 </head>
 <body>
-<!-- Phone UI -->
-<div class="card" id="phoneUI" hidden>
-  <h1>Your Code</h1>
-  <div style="font-size:2rem;font-weight:bold;margin:1rem 0;" id="phoneCode">------</div>
-  <button id="resetCodeBtn">Reset Code</button>
-  <div class="link" id="switchToComputer">I'm not on mobile</div>
-</div>
-
-<!-- Computer UI -->
-<div class="card" id="computerUI" hidden>
-  <h1>Enter Phone Code</h1>
-  <input id="codeInput" placeholder="6-digit code"/>
-  <button id="connectBtn" disabled>Connect</button>
-  <div class="link" id="switchToPhone">I'm not on computer</div>
-  <div class="status" id="peerStatus"></div>
-</div>
-
-<!-- Connected UI -->
-<div class="card" id="connectedUI" hidden>
-  <div class="status" id="statusLine">⏳ Connecting...</div>
-  <div id="searchSection" hidden>
-    <input id="urlInput" placeholder="Enter URL to fetch"/>
-    <button id="sendBtn">Search</button>
-    <div id="result"></div>
+  <!-- Phone -->
+  <div class="card" id="phoneUI" hidden>
+    <h1>Your Phone Code</h1>
+    <div id="phoneCode" style="font-weight:700;font-size:1.9rem;letter-spacing:3px;margin:.6rem 0">------</div>
+    <div class="row">
+      <button id="resetCodeBtn">Reset Code</button>
+    </div>
+    <div class="link" id="switchToComputer">I'm not on mobile</div>
+    <div class="status" id="phoneStatus" style="margin-top:.6rem">Waiting for connection</div>
   </div>
-</div>
+
+  <!-- Computer -->
+  <div class="card" id="computerUI" hidden>
+    <h1>Enter Phone Code</h1>
+    <input id="codeInput" placeholder="6-digit code"/>
+    <div class="row">
+      <button id="connectBtn" disabled>Connect</button>
+    </div>
+    <div class="link" id="switchToPhone">I'm not on computer</div>
+    <div class="status" id="peerStatus"></div>
+    <div class="status" id="compStatus" style="margin-top:6px"></div>
+  </div>
+
+  <!-- Connected -->
+  <div class="card" id="connectedUI" hidden>
+    <div class="status" id="statusLine">⏳ Connecting...</div>
+    <div id="searchSection" hidden>
+      <input id="urlInput" placeholder="Enter URL to fetch (https://...)"/>
+      <button id="sendBtn">Search</button>
+      <div id="result"></div>
+    </div>
+    <div class="link" id="disconnectBtn" style="margin-top:10px">Disconnect</div>
+  </div>
 
 <script>
 (() => {
+  // UI elements
   const phoneUI = document.getElementById('phoneUI');
   const computerUI = document.getElementById('computerUI');
   const connectedUI = document.getElementById('connectedUI');
+
   const phoneCodeEl = document.getElementById('phoneCode');
   const resetCodeBtn = document.getElementById('resetCodeBtn');
   const switchToComputer = document.getElementById('switchToComputer');
-  const switchToPhone = document.getElementById('switchToPhone');
+
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
+  const switchToPhone = document.getElementById('switchToPhone');
   const peerStatus = document.getElementById('peerStatus');
+  const compStatus = document.getElementById('compStatus');
+
   const statusLine = document.getElementById('statusLine');
+  const searchSection = document.getElementById('searchSection');
   const urlInput = document.getElementById('urlInput');
   const sendBtn = document.getElementById('sendBtn');
   const resultEl = document.getElementById('result');
-  const searchSection = document.getElementById('searchSection');
+  const disconnectBtn = document.getElementById('disconnectBtn');
+  const phoneStatus = document.getElementById('phoneStatus');
 
+  // state
   let peer = null;
   let conn = null;
-  let startTime = null;
+  let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
+  let myCode = null;
+  let peerReady = false;
+  let startTime = 0;
   let uptimeTimer = null;
   let pingTimer = null;
   let lastPong = Date.now();
-  let myCode = null;
-  let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
-  let peerReady = false;
+  let retryTimer = null;
+  let lastTarget = null;         // computer stores last code it tried to connect to
+  let connectingDC = null;       // temp variable for current connect attempt
 
-  function getOrCreateCode(reset=false) {
-    if (!reset && myCode) return myCode;
-    if (!reset) myCode = localStorage.getItem("phoneCode");
-    if (!myCode || reset) {
-      myCode = String(Math.floor(100000 + Math.random() * 900000));
-      localStorage.setItem("phoneCode", myCode);
+  // utilities
+  function setStatusLine(txt){ statusLine.textContent = txt; }
+  function setCompStatus(txt){ compStatus.textContent = txt; }
+  function setPeerStatus(txt){ peerStatus.textContent = txt; }
+  function setPhoneStatus(txt){ phoneStatus.textContent = txt; }
+
+  function centerUI(){
+    // show appropriate
+    phoneUI.hidden = computerUI.hidden = connectedUI.hidden = true;
+    if(role === 'phone') phoneUI.hidden = false;
+    else computerUI.hidden = false;
+  }
+
+  // Code management
+  function getOrCreateCode(reset=false){
+    if(!reset && myCode) return myCode;
+    if(!reset) myCode = localStorage.getItem('phoneCode');
+    if(!myCode || reset){
+      myCode = String(Math.floor(100000 + Math.random()*900000));
+      localStorage.setItem('phoneCode', myCode);
     }
     return myCode;
   }
 
-  function resetUI() {
-    phoneUI.hidden = true;
-    computerUI.hidden = true;
+  // Peer setup: only create/destroy when necessary
+  function ensurePeer(id){
+    // If peer exists and id unchanged (or id undefined for computer), keep it.
+    // If we need a new id (phone reset), destroy and recreate.
+    const needNew = !peer || (id && peer.id !== id);
+    if(!needNew) return;
+    try{ if(peer){ peer.destroy(); } }catch(e){}
+    peer = null;
+    peerReady = false;
+    // create a new Peer (if id undefined -> random)
+    peer = new Peer(id);
+    setPeerStatus('initializing...');
+    peer.on('open', pid => {
+      peerReady = true;
+      setPeerStatus('Peer ready: ' + pid);
+      if(role === 'computer') {
+        connectBtn.disabled = false;
+        setCompStatus('Ready to connect');
+      } else {
+        setPhoneStatus('Waiting for connection (share code)');
+      }
+    });
+    peer.on('connection', dc => {
+      // phone can get incoming connection(s)
+      // accept first and set conn
+      if(conn && conn.open){
+        // already have active conn — close incoming extra connection politely
+        try{ dc.close(); }catch(e){}
+        return;
+      }
+      conn = dc;
+      wireConn(dc);
+    });
+    peer.on('error', err => {
+      alert('Peer error: ' + err);
+      setPeerStatus('Peer error: ' + String(err));
+    });
+  }
+
+  function wireConn(dc){
+    // common handlers
+    dc.on('open', () => {
+      // cancel any retry loops for computer
+      if(retryTimer){ clearInterval(retryTimer); retryTimer = null; }
+      connectingDC = null;
+      onConnected(dc);
+    });
+    dc.on('data', onData);
+    dc.on('close', () => {
+      // connection closed
+      if(dc === conn){ conn = null; }
+      onConnClosed(dc);
+    });
+    dc.on('error', err => {
+      console.warn('DC error', err);
+      // will trigger close event normally; leave onConnClosed to handle
+    });
+  }
+
+  // Connect attempt with UI state
+  function startConnect(target){
+    if(!peerReady){
+      alert('Peer not ready yet — wait a moment and try again.');
+      return;
+    }
+    // prevent self-connect
+    if(target === myCode){
+      alert('Cannot connect to your own code');
+      return;
+    }
+    lastTarget = target;
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Connecting...';
+    setCompStatus('Attempting to connect to ' + target + ' ...');
+    // create a connection and wire handlers; monitor open
+    try {
+      connectingDC = peer.connect(target, {reliable:true});
+    } catch(e){
+      setCompStatus('Connect failed: ' + e);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+      return;
+    }
+    // wire temp handlers so we can detect immediate failure
+    connectingDC.on('open', () => {
+      // will be handled by wireConn via peer.on('connection')? For outgoing connect, open triggers on the dc itself
+      // set conn to this dc and wire it fully
+      conn = connectingDC;
+      wireConn(conn);
+    });
+    connectingDC.on('error', err => {
+      console.warn('connect error', err);
+      setCompStatus('Connection error: ' + err);
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+      connectingDC = null;
+    });
+    connectingDC.on('close', () => {
+      // closed immediately
+      if(connectingDC){
+        setCompStatus('Connection closed');
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect';
+        connectingDC = null;
+      }
+    });
+
+    // start a retry loop in case the remote isn't registered yet (only for computer role)
+    if(retryTimer) clearInterval(retryTimer);
+    let retries = 0;
+    retryTimer = setInterval(() => {
+      // if connected, stop
+      if(conn && conn.open){
+        clearInterval(retryTimer);
+        retryTimer = null;
+        return;
+      }
+      // if peer not ready, skip
+      if(!peerReady) return;
+      retries++;
+      // attempt reconnect only if no active connectingDC
+      if(!connectingDC || connectingDC.open === false){
+        try{
+          connectingDC = peer.connect(target, {reliable:true});
+          connectingDC.on('open', () => { conn = connectingDC; wireConn(conn); });
+          connectingDC.on('data', onData);
+          connectingDC.on('close', ()=>{});
+          connectingDC.on('error', ()=>{});
+          setCompStatus('Retrying connection (attempt ' + retries + ')...');
+        } catch(e){}
+      }
+      // after many attempts, show message but keep trying (you can cancel by switching UI)
+      if(retries > 30){
+        setCompStatus('Still trying... (keep phone open).');
+      }
+    }, 3000);
+  }
+
+  // On established connection
+  function onConnected(dc){
+    conn = dc;
+    setStatusLine('✅ Connected • Uptime 0s');
+    // show connected UI
+    phoneUI.hidden = computerUI.hidden = true;
+    connectedUI.hidden = false;
+    // show search only on computer
+    if(role === 'computer') searchSection.hidden = false;
+    else searchSection.hidden = true;
+
+    // clear timers
+    if(uptimeTimer) clearInterval(uptimeTimer);
+    startTime = Date.now();
+    uptimeTimer = setInterval(() => {
+      const s = Math.floor((Date.now()-startTime)/1000);
+      setStatusLine('✅ Connected • Uptime ' + s + 's');
+      // check pong stale
+      if(role === 'computer' && (Date.now() - lastPong) > 20000){
+        setCompStatus('No pong detected — will attempt reconnect');
+        // force close and let retry loop attempt to reconnect
+        try{ if(conn){ conn.close(); } }catch(e){}
+      }
+    }, 1000);
+
+    // ping loop (computer)
+    if(pingTimer) clearInterval(pingTimer);
+    if(role === 'computer'){
+      lastPong = Date.now();
+      pingTimer = setInterval(() => {
+        try{ if(conn && conn.open){ conn.send({type:'ping'}); } } catch(e){}
+      }, 8000);
+    }
+
+    // restore connect button on computer (so user can reconnect if wants)
+    if(role === 'computer'){
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+      setCompStatus('Connected to ' + (lastTarget || 'remote'));
+    } else {
+      setPhoneStatus('Connected');
+    }
+  }
+
+  // When data channel closed
+  function onConnClosed(dc){
+    // cleanup timers
+    if(uptimeTimer) { clearInterval(uptimeTimer); uptimeTimer = null; }
+    if(pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    // show UI depending on role
+    if(role === 'phone'){
+      setPhoneStatus('Disconnected — waiting for new connection');
+      // phone waits for new incoming connections; we keep peer registered
+      phoneUI.hidden = false;
+      computerUI.hidden = true;
+      connectedUI.hidden = true;
+    } else {
+      setCompStatus('Disconnected — retrying to ' + (lastTarget || 'phone'));
+      // show computer UI and start retry loop
+      computerUI.hidden = false;
+      connectedUI.hidden = true;
+      phoneUI.hidden = true;
+      // start retry attempts automatically
+      if(lastTarget){
+        if(!retryTimer) {
+          retryTimer = setInterval(() => {
+            if(conn && conn.open) { clearInterval(retryTimer); retryTimer = null; return; }
+            if(!peerReady) return;
+            try {
+              connectingDC = peer.connect(lastTarget, {reliable:true});
+              connectingDC.on('open', () => { conn = connectingDC; wireConn(conn); });
+              connectingDC.on('data', onData);
+              connectingDC.on('close', ()=>{});
+              connectingDC.on('error', ()=>{});
+              setCompStatus('Retrying connection to ' + lastTarget);
+            } catch(e){
+              // ignore
+            }
+          }, 3000);
+        }
+      } else {
+        setCompStatus('Disconnected — enter code to connect');
+      }
+    }
+  }
+
+  // Data messages
+  async function onData(msg){
+    if(!msg || typeof msg !== 'object') return;
+    if(role === 'computer'){
+      if(msg.type === 'fetch-response'){
+        resultEl.textContent = `Status: ${msg.status}\n\n${msg.bodyText}`;
+      } else if(msg.type === 'pong'){
+        lastPong = Date.now();
+      }
+    } else { // phone role
+      if(msg.type === 'fetch-request'){
+        // defensive: only proceed if conn open
+        if(!conn || !conn.open) return;
+        try {
+          // use cors proxy
+          const proxied = 'https://corsproxy.io/?' + encodeURIComponent(msg.url);
+          const r = await fetch(proxied);
+          const text = await r.text();
+          conn.send({type:'fetch-response', status: r.status, bodyText: text});
+        } catch(e){
+          conn.send({type:'fetch-response', status:'error', bodyText: String(e)});
+        }
+      } else if(msg.type === 'ping'){
+        try{ if(conn && conn.open) conn.send({type:'pong'}); }catch(e){}
+      }
+    }
+  }
+
+  // start behaviors
+  switchToComputer.onclick = () => { role='computer'; centerUI(); setupUIForRole(); };
+  switchToPhone.onclick = () => { role='phone'; centerUI(); setupUIForRole(); };
+  resetCodeBtn.onclick = () => {
+    // regenerate phone code and recreate peer (phone only)
+    getOrCreateCode(true);
+    phoneCodeEl.textContent = myCode;
+    ensurePeer(myCode);
+    setPhoneStatus('New code generated');
+  };
+  connectBtn.onclick = () => {
+    const target = codeInput.value.trim();
+    if(!target){ alert('Enter a code'); return; }
+    startConnect(target);
+  };
+  disconnectBtn.onclick = () => {
+    try{ if(conn) conn.close(); }catch(e){}
+    conn = null;
+    setStatusLine('Disconnected');
+    // show role UI
+    if(role === 'phone') { phoneUI.hidden=false; connectedUI.hidden=true; } else { computerUI.hidden=false; connectedUI.hidden=true; }
+  };
+  sendBtn.onclick = () => {
+    const url = urlInput.value.trim();
+    if(!url) return alert('Enter a url');
+    if(!conn || !conn.open) return alert('Not connected');
+    try{ conn.send({type:'fetch-request', url}); resultEl.textContent = 'Fetching...'; }catch(e){ alert('Send failed: '+e); }
+  };
+  urlInput.addEventListener('keypress', e => { if(e.key === 'Enter') sendBtn.click(); });
+
+  function setupUIForRole(){
+    // ensure peer live and UI shows correct content
+    if(role === 'phone'){
+      const code = getOrCreateCode();
+      phoneCodeEl.textContent = code;
+      ensurePeer(code);
+      setPhoneStatus('Waiting for connection — share code');
+    } else {
+      // computer
+      ensurePeer(); // random peer if none
+      setPeerStatus('Ready (waiting for user)');
+      setCompStatus('Enter code and press Connect');
+      connectBtn.disabled = !peerReady;
+    }
+    // hide connected view
     connectedUI.hidden = true;
   }
 
-  function showPhoneUI() {
-    role = 'phone';
-    resetUI();
-    phoneUI.hidden = false;
-    phoneCodeEl.textContent = getOrCreateCode();
-    setupPeer(myCode);
+  function ensurePeer(id){
+    ensurePeerImpl(id);
   }
 
-  function showComputerUI() {
-    role = 'computer';
-    resetUI();
-    computerUI.hidden = false;
-    connectBtn.disabled = true;
-    setupPeer(); // random ID for computer
-  }
-
-  function showConnectedUI() {
-    resetUI();
-    connectedUI.hidden = false;
-  }
-
-  switchToComputer.onclick = () => showComputerUI();
-  switchToPhone.onclick = () => showPhoneUI();
-  resetCodeBtn.onclick = () => {
-    getOrCreateCode(true);
-    phoneCodeEl.textContent = myCode;
-    setupPeer(myCode);
-  };
-
-  connectBtn.onclick = () => {
-    if (!peerReady) return alert("Peer not ready yet!");
-    const target = codeInput.value.trim();
-    if (!target) return alert("Enter a code.");
-    if (target === myCode) return alert("Cannot connect to your own code!");
-
-    connectBtn.disabled = true; // disable during attempt
-    connectBtn.textContent = "Connecting...";
-
-    const dc = peer.connect(target, {reliable:true});
-    dc.on('open', () => onConnected(dc));
-    dc.on('data', onData);
-    dc.on('close', () => {
-      onDisconnected();
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect";
-    });
-    dc.on('error', err => {
-      alert("Connection error: "+err);
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect";
-    });
-  };
-
-  function setupPeer(id) {
-    if (peer) { try { peer.destroy(); } catch(e) {} }
-    peerReady = false;
+  // Implementation-level ensurePeer wrapper moved inside closure to avoid hoisting confusion
+  function ensurePeerImpl(id){
+    // use same logic as earlier ensurePeer but local definition
+    const needNew = !peer || (id && peer.id !== id);
+    if(!needNew) return;
+    try{ if(peer){ peer.destroy(); } }catch(e){}
+    peer = null; peerReady = false;
     peer = new Peer(id);
+    setPeerStatus('initializing...');
     peer.on('open', pid => {
       peerReady = true;
-      if (role==='computer') connectBtn.disabled = false;
-      peerStatus.textContent = "Peer ready: "+pid;
+      setPeerStatus('Peer ready: ' + pid);
+      if(role === 'computer') {
+        connectBtn.disabled = false;
+        setCompStatus('Ready to connect');
+      } else {
+        setPhoneStatus('Waiting for connection (share code)');
+      }
     });
     peer.on('connection', dc => {
+      // accept first incoming and close extra ones
+      if(conn && conn.open){
+        try{ dc.close(); }catch(e){}
+        return;
+      }
       conn = dc;
-      dc.on('open', () => onConnected(dc));
-      dc.on('data', onData);
-      dc.on('close', onDisconnected);
-      dc.on('error', err => alert("Connection error: "+err));
+      wireConn(dc);
     });
-    peer.on('error', err => alert("Peer error: "+err));
+    peer.on('disconnected', () => {
+      // try to reconnect peer (peerjs has reconnect failures sometimes)
+      setPeerStatus('Peer disconnected — attempting to reconnect');
+      try{ peer.reconnect(); }catch(e){}
+    });
+    peer.on('close', () => {
+      setPeerStatus('Peer closed');
+    });
+    peer.on('error', err => {
+      setPeerStatus('Peer error: ' + String(err));
+      console.error('peer error', err);
+    });
   }
 
-  function onConnected(dc) {
-    conn = dc;
-    showConnectedUI();
-    startTime = Date.now();
-    searchSection.hidden = role !== 'computer';
+  // initialize
+  centerUI();
+  setupUIForRole();
 
-    if (role==='computer') {
-      connectBtn.disabled = false;
-      connectBtn.textContent = "Connect";
-    }
-
-    if (uptimeTimer) clearInterval(uptimeTimer);
-    uptimeTimer = setInterval(() => {
-      const secs = Math.floor((Date.now()-startTime)/1000);
-      const uptimeText = secs+"s";
-      statusLine.textContent = `✅ Connected • Uptime ${uptimeText}`;
-      if (role==='computer' && Date.now()-lastPong>20000) onDisconnected();
-    },1000);
-
-    if (pingTimer) clearInterval(pingTimer);
-    if (role==='computer') {
-      pingTimer = setInterval(()=>{ if(conn && conn.open) conn.send({type:'ping'}); },10000);
-    }
-  }
-
-  function onDisconnected() {
-    if(uptimeTimer) clearInterval(uptimeTimer);
-    if(pingTimer) clearInterval(pingTimer);
-    uptimeTimer=pingTimer=null;
-    resetUI();
-    role==='phone'?showPhoneUI():showComputerUI();
-  }
-
-  async function onData(data){
-    if(role==='computer'){
-      if(data.type==='fetch-response'){
-        resultEl.textContent = `Status: ${data.status}\n\n${data.bodyText}`;
-      }else if(data.type==='pong'){ lastPong=Date.now(); }
-    }else if(role==='phone'){
-      if(data.type==='fetch-request'){
-        try{
-          const proxied="https://corsproxy.io/?" + encodeURIComponent(data.url);
-          const r=await fetch(proxied);
-          const text=await r.text();
-          conn.send({type:'fetch-response',status:r.status,bodyText:text});
-        }catch(e){
-          conn.send({type:'fetch-response',status:'error',bodyText:String(e)});
-        }
-      }else if(data.type==='ping'){ conn.send({type:'pong'}); }
-    }
-  }
-
-  sendBtn.onclick=()=>{ const url=urlInput.value.trim(); if(!url) return; conn.send({type:'fetch-request',url}); resultEl.textContent="Fetching..."; };
-  urlInput.addEventListener("keypress",e=>{ if(e.key==="Enter") sendBtn.click(); });
-
-  if(role==='phone') showPhoneUI(); else showComputerUI();
 })();
 </script>
 </body>
