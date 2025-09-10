@@ -12,29 +12,36 @@
     background:#121212;
     color:#eee;
     font-family: system-ui, sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
   }
+
   .card {
     background:#1e1e1e;
     border:1px solid #333;
     border-radius:12px;
-    padding:1.5rem;
+    padding:2rem;
     box-shadow:0 4px 12px rgba(0,0,0,0.3);
-    width:100%; max-width:400px;
+    width:100%;
+    max-width:380px;
     text-align:center;
-    margin:auto;
   }
-  h1 { font-size:1.3rem; margin:0 0 1rem; }
+
+  h1 { font-size:1.4rem; margin-bottom:1rem; }
+
   input, button {
     font-size:1rem;
     padding:0.6rem 0.8rem;
     border-radius:8px;
     border:1px solid #555;
-    margin:0.4rem 0;
+    margin:0.5rem 0;
     background:#2a2a2a;
     color:#eee;
     width:100%;
     box-sizing:border-box;
   }
+
   button {
     background:#0b74de;
     border:none;
@@ -42,13 +49,21 @@
   }
   button:disabled { opacity:0.6; cursor:not-allowed; }
   button:hover:enabled { background:#095ab0; }
-  .link { color:#4aa3ff; font-size:0.9rem; cursor:pointer; margin-top:0.6rem; display:inline-block; }
 
-  /* Connected full browser UI */
+  .link { 
+    color:#4aa3ff; 
+    font-size:0.9rem; 
+    cursor:pointer; 
+    margin-top:0.6rem; 
+    display:inline-block; 
+  }
+
+  /* Connected computer UI */
   #connectedUI {
     display:flex;
     flex-direction:column;
     height:100%;
+    width:100%;
   }
   #topbar {
     display:flex;
@@ -57,7 +72,25 @@
     background:#1e1e1e;
     border-bottom:1px solid #333;
   }
-  #urlInput { flex:1; }
+  #urlInput {
+    flex:1;
+    padding:0.5rem;
+    font-size:1rem;
+    border-radius:6px;
+    border:1px solid #555;
+    background:#2a2a2a;
+    color:#eee;
+  }
+  #sendBtn {
+    padding:0.5rem 1rem;
+    flex:0;
+    background:#0b74de;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+  }
+  #sendBtn:hover:enabled { background:#095ab0; }
+
   #browser {
     flex:1;
     overflow:auto;
@@ -84,7 +117,7 @@
     <div class="link" id="switchToPhone">I'm not on computer</div>
   </div>
 
-  <!-- Connected UI -->
+  <!-- Connected Computer UI -->
   <div id="connectedUI" hidden>
     <div id="topbar">
       <input id="urlInput" placeholder="Enter URL to fetch"/>
@@ -94,7 +127,7 @@
   </div>
 
 <script>
-/* 🔥 Your working JS logic — unchanged */
+/* ✅ Working JS logic (unchanged) */
 (() => {
   const phoneUI = document.getElementById('phoneUI');
   const computerUI = document.getElementById('computerUI');
@@ -147,7 +180,7 @@
 
   function showConnectedUI() {
     resetUI();
-    connectedUI.hidden = false;
+    if (role === 'computer') connectedUI.hidden = false;
   }
 
   switchToComputer.onclick = () => showComputerUI();
