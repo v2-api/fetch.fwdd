@@ -7,30 +7,38 @@
   <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
   <style>
     html, body {
-      margin:0; padding:0;
-      height:100%; width:100%;
-      overflow:hidden;
-      font-family: system-ui, sans-serif;
+      height:100%;
+      margin:0;
+      display:flex;
+      justify-content:center;
+      align-items:center;
       background:#fafafa;
-      display:flex; justify-content:center; align-items:center;
-      padding:1rem;
+      font-family: system-ui, sans-serif;
     }
     .card {
-      background:#fff; border:1px solid #ddd;
-      border-radius:12px; padding:2rem;
+      background:#fff;
+      border:1px solid #ddd;
+      border-radius:12px;
+      padding:2rem;
       box-shadow:0 4px 12px rgba(0,0,0,0.05);
       width:100%; max-width:400px;
       text-align:center;
     }
     h1 { font-size:1.3rem; margin:0 0 1rem; }
     input, button {
-      font-size:1rem; padding:0.6rem 0.8rem;
-      border-radius:8px; border:1px solid #ccc;
-      margin:0.4rem 0; box-sizing:border-box;
+      font-size:1rem;
+      padding:0.6rem 0.8rem;
+      border-radius:8px;
+      border:1px solid #ccc;
+      margin:0.4rem 0;
+      box-sizing:border-box;
       width:100%;
     }
     button {
-      background:#0b74de; color:white; border:none; cursor:pointer;
+      background:#0b74de;
+      color:white;
+      border:none;
+      cursor:pointer;
     }
     button:hover { background:#095ab0; }
     .link { color:#0b74de; font-size:0.9rem; cursor:pointer; margin-top:0.6rem; display:inline-block; }
@@ -69,27 +77,16 @@
     </div>
   </div>
 
-  <!-- Disconnected UI -->
-  <div class="card" id="disconnectedUI" hidden>
-    <h1>Disconnected</h1>
-    <p style="margin:1rem 0;">⚠️ Connection lost</p>
-    <button id="reconnectBtn">Reconnect</button>
-  </div>
-
 <script>
 (() => {
   const phoneUI = document.getElementById('phoneUI');
   const computerUI = document.getElementById('computerUI');
   const connectedUI = document.getElementById('connectedUI');
-  const disconnectedUI = document.getElementById('disconnectedUI');
-
   const phoneCodeEl = document.getElementById('phoneCode');
   const switchToComputer = document.getElementById('switchToComputer');
   const switchToPhone = document.getElementById('switchToPhone');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
-  const reconnectBtn = document.getElementById('reconnectBtn');
-
   const uptimeEl = document.getElementById('uptime');
   const statusLine = document.getElementById('statusLine');
   const urlInput = document.getElementById('urlInput');
@@ -99,16 +96,20 @@
 
   let peer = null;
   let conn = null;
+  let startTime = null;
   let uptimeTimer = null;
   let pingTimer = null;
-  let startTime = null;
-  let myCode = null;
   let lastPong = Date.now();
+  let myCode = null;
   let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
 
   function getOrCreateCode() {
     if (myCode) return myCode;
-    myCode = String(Math.floor(100000 + Math.random() * 900000));
+    myCode = localStorage.getItem("phoneCode");
+    if (!myCode) {
+      myCode = String(Math.floor(100000 + Math.random() * 900000));
+      localStorage.setItem("phoneCode", myCode);
+    }
     return myCode;
   }
 
@@ -116,7 +117,6 @@
     phoneUI.hidden = true;
     computerUI.hidden = true;
     connectedUI.hidden = true;
-    disconnectedUI.hidden = true;
   }
 
   function showPhoneUI() {
@@ -126,27 +126,21 @@
     phoneCodeEl.textContent = getOrCreateCode();
     setupPeer(myCode);
   }
+
   function showComputerUI() {
     role = 'computer';
     resetUI();
     computerUI.hidden = false;
-    setupPeer(); // random id
+    setupPeer(); // random ID for computer
   }
+
   function showConnectedUI() {
     resetUI();
     connectedUI.hidden = false;
   }
-  function showDisconnectedUI() {
-    resetUI();
-    disconnectedUI.hidden = false;
-  }
 
   switchToComputer.onclick = () => showComputerUI();
   switchToPhone.onclick = () => showPhoneUI();
-  reconnectBtn.onclick = () => {
-    if (role === 'phone') showPhoneUI();
-    else showComputerUI();
-  };
 
   connectBtn.onclick = () => {
     if (!peer) return;
@@ -161,12 +155,7 @@
 
   function setupPeer(id) {
     if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
-    peer = new Peer(id, {
-      host: "peerjs.com",
-      port: 443,
-      path: "/",
-      secure: true
-    });
+    peer = new Peer(id); // if id undefined → random for computer
     peer.on('connection', dc => {
       conn = dc;
       conn.on('open', () => onConnected(conn));
@@ -206,7 +195,8 @@
     if (uptimeTimer) clearInterval(uptimeTimer);
     if (pingTimer) clearInterval(pingTimer);
     uptimeTimer = pingTimer = null;
-    showDisconnectedUI();
+    resetUI();
+    (role === 'phone') ? showPhoneUI() : showComputerUI();
   }
 
   async function onData(data) {
@@ -221,7 +211,7 @@
       if (data.type === 'fetch-request') {
         try {
           const proxied = "https://corsproxy.io/?" + encodeURIComponent(data.url);
-          const r = await fetch(proxied, {method:"GET"});
+          const r = await fetch(proxied);
           const text = await r.text();
           conn.send({type:'fetch-response', status:r.status, bodyText:text});
         } catch(e) {
@@ -239,6 +229,7 @@
     conn.send({type:'fetch-request', url});
     resultEl.textContent = "Fetching...";
   };
+
   urlInput.addEventListener("keypress", e => {
     if (e.key === "Enter") sendBtn.click();
   });
