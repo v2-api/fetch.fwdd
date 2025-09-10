@@ -127,15 +127,18 @@
   };
 
   function setupPeer(id) {
-    if (peer) return;
-    peer = new Peer(id);
-    peer.on('open', pid => console.log("Peer open:", pid));
-    peer.on('connection', dc => {
-      conn = dc;
-      conn.on('open', () => onConnected(conn));
-      conn.on('data', onData);
-    });
+  if (peer) {
+    try { peer.destroy(); } catch(e) {}
+    peer = null;
   }
+  peer = new Peer(id);
+  peer.on('open', pid => console.log("Peer open:", pid));
+  peer.on('connection', dc => {
+    conn = dc;
+    conn.on('open', () => onConnected(conn));
+    conn.on('data', onData);
+  });
+}
 
   function onConnected(dc) {
     phoneUI.hidden = true;
