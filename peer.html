@@ -11,7 +11,8 @@
   h1 {font-size:1.3rem;margin:0 0 1rem;}
   input, button {font-size:1rem;padding:0.6rem 0.8rem;border-radius:8px;border:1px solid #ccc;margin:0.4rem 0;box-sizing:border-box;width:100%;}
   button {background:#0b74de;color:white;border:none;cursor:pointer;}
-  button:hover {background:#095ab0;}
+  button:disabled {background:#ccc;cursor:not-allowed;}
+  button:hover:not(:disabled) {background:#095ab0;}
   .link {color:#0b74de;font-size:0.9rem;cursor:pointer;margin-top:0.6rem;display:inline-block;}
   .status {margin-bottom:1rem;font-size:0.95rem;color:#333;}
   #result {text-align:left;white-space:pre-wrap;font-family:monospace;font-size:0.85rem;margin-top:1rem;background:#f6f6f6;padding:0.8rem;border-radius:8px;max-height:250px;overflow:auto;}
@@ -123,15 +124,27 @@
     const target = codeInput.value.trim();
     if (!target) return alert("Enter a code.");
     if (target === myCode) return alert("Cannot connect to your own code!");
+
+    connectBtn.disabled = true; // disable during attempt
+    connectBtn.textContent = "Connecting...";
+
     const dc = peer.connect(target, {reliable:true});
     dc.on('open', () => onConnected(dc));
     dc.on('data', onData);
-    dc.on('close', onDisconnected);
-    dc.on('error', err => alert("Connection error: "+err));
+    dc.on('close', () => {
+      onDisconnected();
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
+    });
+    dc.on('error', err => {
+      alert("Connection error: "+err);
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
+    });
   };
 
   function setupPeer(id) {
-    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
+    if (peer) { try { peer.destroy(); } catch(e) {} }
     peerReady = false;
     peer = new Peer(id);
     peer.on('open', pid => {
@@ -154,6 +167,11 @@
     showConnectedUI();
     startTime = Date.now();
     searchSection.hidden = role !== 'computer';
+
+    if (role==='computer') {
+      connectBtn.disabled = false;
+      connectBtn.textContent = "Connect";
+    }
 
     if (uptimeTimer) clearInterval(uptimeTimer);
     uptimeTimer = setInterval(() => {
