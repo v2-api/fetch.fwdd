@@ -19,7 +19,7 @@
       background:#fff;
       border:1px solid #ddd;
       border-radius:12px;
-      padding:2rem;
+      padding:1.6rem;
       box-shadow:0 4px 12px rgba(0,0,0,0.05);
       width:100%; max-width:400px;
       text-align:center;
@@ -56,6 +56,7 @@
   <div class="card" id="phoneUI" hidden>
     <h1>Your Code</h1>
     <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
+    <button id="resetCodeBtn">Reset Code</button>
     <div class="link" id="switchToComputer">I'm not on mobile</div>
   </div>
 
@@ -69,7 +70,7 @@
 
   <!-- Connected UI -->
   <div class="card" id="connectedUI" hidden>
-    <div class="status" id="statusLine">✅ Connected • Uptime <span id="uptime">0s</span></div>
+    <div class="status" id="statusLine">⏳ Connecting...</div>
     <div id="searchSection" hidden>
       <input id="urlInput" placeholder="Enter URL to fetch"/>
       <button id="sendBtn">Search</button>
@@ -83,11 +84,11 @@
   const computerUI = document.getElementById('computerUI');
   const connectedUI = document.getElementById('connectedUI');
   const phoneCodeEl = document.getElementById('phoneCode');
+  const resetCodeBtn = document.getElementById('resetCodeBtn');
   const switchToComputer = document.getElementById('switchToComputer');
   const switchToPhone = document.getElementById('switchToPhone');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
-  const uptimeEl = document.getElementById('uptime');
   const statusLine = document.getElementById('statusLine');
   const urlInput = document.getElementById('urlInput');
   const sendBtn = document.getElementById('sendBtn');
@@ -103,10 +104,12 @@
   let myCode = null;
   let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
 
-  function getOrCreateCode() {
-    if (myCode) return myCode;
-    myCode = localStorage.getItem("phoneCode");
-    if (!myCode) {
+  function getOrCreateCode(reset=false) {
+    if (!reset && myCode) return myCode;
+    if (!reset) {
+      myCode = localStorage.getItem("phoneCode");
+    }
+    if (!myCode || reset) {
       myCode = String(Math.floor(100000 + Math.random() * 900000));
       localStorage.setItem("phoneCode", myCode);
     }
@@ -141,6 +144,11 @@
 
   switchToComputer.onclick = () => showComputerUI();
   switchToPhone.onclick = () => showPhoneUI();
+  resetCodeBtn.onclick = () => {
+    getOrCreateCode(true);
+    phoneCodeEl.textContent = myCode;
+    setupPeer(myCode);
+  };
 
   connectBtn.onclick = () => {
     if (!peer) return;
@@ -167,10 +175,16 @@
   function onConnected(dc) {
     showConnectedUI();
     startTime = Date.now();
+
     if (uptimeTimer) clearInterval(uptimeTimer);
     uptimeTimer = setInterval(() => {
       const secs = Math.floor((Date.now()-startTime)/1000);
-      uptimeEl.textContent = secs+"s";
+      const uptimeText = secs+"s";
+      if (role === 'computer') {
+        statusLine.innerHTML = `✅ Connected • Uptime <span>${uptimeText}</span>`;
+      } else {
+        statusLine.textContent = `✅ Connected • Uptime ${uptimeText}`;
+      }
       if (role === 'computer' && Date.now()-lastPong > 20000) {
         onDisconnected();
       }
@@ -187,7 +201,6 @@
       searchSection.hidden = false;
     } else {
       searchSection.hidden = true;
-      statusLine.textContent = "✅ Connected • Uptime " + uptimeEl.textContent;
     }
   }
 
@@ -205,7 +218,6 @@
         resultEl.textContent = `Status: ${data.status}\n\n${data.bodyText}`;
       } else if (data.type === 'pong') {
         lastPong = Date.now();
-        statusLine.innerHTML = `✅ Connected • Uptime <span id="uptime">${uptimeEl.textContent}</span>`;
       }
     } else if (role === 'phone') {
       if (data.type === 'fetch-request') {
