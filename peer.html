@@ -12,6 +12,10 @@
     background:#121212;
     color:#eee;
     font-family: system-ui, sans-serif;
+  }
+
+  #app {
+    height:100%;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -117,8 +121,9 @@
 </style>
 </head>
 <body>
+<div id="app">
   <!-- Phone UI -->
-  <div class="card" id="phoneUI" hidden>
+  <div class="card" id="phoneUI">
     <h1>Your Code</h1>
     <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
     <button id="resetCodeBtn">Reset Code</button>
@@ -139,8 +144,9 @@
     <button id="connectBtn">Connect</button>
     <div class="link" id="switchToPhone">I'm not on computer</div>
   </div>
+</div>
 
-  <!-- Connected Computer UI -->
+  <!-- Connected Computer UI (full screen) -->
   <div id="connectedUI" hidden>
     <div id="topbar">
       <input id="urlInput" placeholder="Enter URL to fetch"/>
@@ -155,6 +161,8 @@
   const phoneConnected = document.getElementById('phoneConnected');
   const computerUI = document.getElementById('computerUI');
   const connectedUI = document.getElementById('connectedUI');
+  const app = document.getElementById('app');
+
   const phoneCodeEl = document.getElementById('phoneCode');
   const resetCodeBtn = document.getElementById('resetCodeBtn');
   const switchToComputer = document.getElementById('switchToComputer');
@@ -189,6 +197,7 @@
     phoneConnected.hidden = true;
     computerUI.hidden = true;
     connectedUI.hidden = true;
+    app.hidden = false;
   }
 
   function showPhoneUI() {
@@ -223,9 +232,11 @@
   function showConnectedUI() {
     resetUI();
     if (role === 'computer') {
-      connectedUI.hidden = false;   // ✅ Only computer sees search bar
+      app.hidden = true;
+      connectedUI.hidden = false;   // fullscreen browser
     } else if (role === 'phone') {
-      showPhoneConnected();         // ✅ Only phone sees uptime
+      phoneUI.hidden = true;
+      showPhoneConnected();
     }
   }
 
