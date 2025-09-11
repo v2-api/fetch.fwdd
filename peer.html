@@ -6,174 +6,201 @@
 <title>Phone Proxy</title>
 <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <style>
-  html, body {
-    height:100%;
-    margin:0;
-    background:#121212;
-    color:#eee;
-    font-family: system-ui, sans-serif;
+  :root {
+    --bg: #121212;
+    --card: #1e1e1e;
+    --muted: #2a2a2a;
+    --accent: #0b74de;
+    --border: #333;
+    --text: #eee;
   }
 
+  html,body {
+    height:100%;
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+
+  /* App wrapper keeps centered card(s) */
   #app {
     height:100%;
     display:flex;
     align-items:center;
     justify-content:center;
+    padding:24px;
+    box-sizing:border-box;
   }
 
   .card {
-    background:#1e1e1e;
-    border:1px solid #333;
+    background:var(--card);
+    border:1px solid var(--border);
     border-radius:16px;
-    padding:2rem;
-    box-shadow:0 4px 12px rgba(0,0,0,0.3);
+    padding:22px;
+    box-shadow:0 8px 24px rgba(0,0,0,0.35);
     width:100%;
-    max-width:380px;
+    max-width:420px;
     text-align:center;
   }
 
-  h1 { font-size:1.4rem; margin-bottom:1rem; }
+  h1 { font-size:1.25rem; margin:0 0 12px 0; font-weight:600; }
+
+  .big-code {
+    font-size:2rem;
+    font-weight:700;
+    letter-spacing:1px;
+    margin:14px 0;
+    user-select:all;
+    padding:8px 12px;
+    border-radius:10px;
+    background:linear-gradient(180deg,#242424,#1f1f1f);
+    border:1px solid rgba(255,255,255,0.02);
+  }
 
   input, button {
     font-size:1rem;
-    padding:0.7rem 1rem;
+    padding:0.7rem 0.9rem;
     border-radius:10px;
     border:1px solid #555;
-    margin:0.5rem 0;
-    background:#2a2a2a;
-    color:#eee;
+    margin:8px 0;
+    background:var(--muted);
+    color:var(--text);
     width:100%;
     box-sizing:border-box;
   }
 
   button {
-    background:#0b74de;
+    background:var(--accent);
     border:none;
     cursor:pointer;
-    font-weight:bold;
+    font-weight:700;
   }
-  button:disabled { opacity:0.6; cursor:not-allowed; }
+  button:disabled { opacity:0.55; cursor:not-allowed; }
   button:hover:enabled { background:#095ab0; }
 
-  .link { 
-    color:#4aa3ff; 
-    font-size:0.9rem; 
-    cursor:pointer; 
-    margin-top:0.6rem; 
-    display:inline-block; 
+  .link {
+    color:#4aa3ff;
+    font-size:0.9rem;
+    cursor:pointer;
+    margin-top:8px;
+    display:inline-block;
   }
 
-  /* Connected computer UI */
-  #connectedUI {
+  .row { display:flex; gap:8px; align-items:center; }
+
+  /* computer connected (full-screen) overlay */
+  #computerConnectedView {
+    position:fixed;
+    inset:0;
     display:flex;
     flex-direction:column;
-    height:100%;
-    width:100%;
+    background:linear-gradient(180deg,#0b0b0b,#070707);
+    align-items:stretch;
+    justify-content:flex-start;
+    padding:18px;
+    box-sizing:border-box;
+    z-index:50;
   }
+
   #topbar {
     display:flex;
-    gap:0.5rem;
-    padding:0.6rem;
-    background:#1e1e1e;
-    border-bottom:1px solid #333;
+    gap:8px;
+    align-items:center;
+    padding:10px;
+    border-radius:12px;
+    background:var(--card);
+    border:1px solid var(--border);
   }
-  #urlInput {
-    flex:1;
-    padding:0.6rem;
-    font-size:1rem;
-    border-radius:10px;
-    border:1px solid #555;
-    background:#2a2a2a;
-    color:#eee;
-  }
-  #sendBtn {
-    padding:0.6rem 1rem;
-    flex:0;
-    background:#0b74de;
-    border:none;
-    border-radius:10px;
-    cursor:pointer;
-    font-weight:bold;
-  }
-  #sendBtn:hover:enabled { background:#095ab0; }
+  #urlInput { flex:1; padding:10px; border-radius:10px; }
+  #sendBtn { padding:10px 14px; border-radius:10px; }
 
   #browser {
-    flex:1;
+    margin-top:12px;
+    padding:12px;
+    border-radius:12px;
+    background:#0b0b0b;
+    border:1px solid #111;
+    color:var(--text);
     overflow:auto;
-    background:#111;
-    padding:1rem;
+    flex:1;
   }
-  a { color:#4aa3ff; }
 
-  /* Phone connected UI */
-  #phoneConnected {
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    text-align:center;
-    gap:1rem;
-  }
-  #uptime {
-    font-size:1.1rem;
-    color:#9acdff;
-  }
+  /* phone connected */
+  #phoneConnectedView { display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center; }
+  #uptime { font-size:1rem; color:#9acdff; }
+
+  /* small helpers */
+  .muted { color:#9aa; font-size:0.9rem; }
+  a { color:#4aa3ff; }
 </style>
 </head>
 <body>
-<div id="app">
-  <!-- Phone UI -->
-  <div class="card" id="phoneUI">
-    <h1>Your Code</h1>
-    <div style="font-size:2rem; font-weight:bold; margin:1rem 0;" id="phoneCode">------</div>
-    <button id="resetCodeBtn">Reset Code</button>
-    <div class="link" id="switchToComputer">I'm not on mobile</div>
-  </div>
-
-  <!-- Phone Connected UI -->
-  <div class="card" id="phoneConnected" hidden>
-    <h1>📱 Connected</h1>
-    <div id="uptime">Uptime: 0s</div>
-    <button id="disconnectBtn">Disconnect</button>
-  </div>
-
-  <!-- Computer UI -->
-  <div class="card" id="computerUI" hidden>
-    <h1>Enter Phone Code</h1>
-    <input id="codeInput" placeholder="6-digit code"/>
-    <button id="connectBtn">Connect</button>
-    <div class="link" id="switchToPhone">I'm not on computer</div>
-  </div>
-</div>
-
-  <!-- Connected Computer UI (full screen) -->
-  <div id="connectedUI" hidden>
-    <div id="topbar">
-      <input id="urlInput" placeholder="Enter URL to fetch"/>
-      <button id="sendBtn">Go</button>
+  <!-- All views are hidden by default using "hidden" attribute.
+       JS will un-hide exactly one view at a time using showView(). -->
+  <div id="app">
+    <!-- Phone - code entry -->
+    <div id="phoneCodeView" class="card" hidden>
+      <h1>Your Phone Code</h1>
+      <div id="phoneCode" class="big-code">------</div>
+      <button id="resetCodeBtn">Reset Code</button>
+      <div class="link" id="switchToComputer">I'm not on mobile</div>
     </div>
-    <div id="browser"></div>
+
+    <!-- Phone - connected -->
+    <div id="phoneConnectedView" class="card" hidden>
+      <h1>📱 Connected</h1>
+      <div id="phoneStatus" class="muted">Remote: <span id="remoteId">—</span></div>
+      <div id="uptime">Uptime: 0s</div>
+      <div style="width:100%; display:flex; gap:8px;">
+        <button id="disconnectBtn" style="flex:1">Disconnect</button>
+      </div>
+      <div class="link" id="switchToComputerFromPhone">Open on Computer</div>
+    </div>
+
+    <!-- Computer - enter code -->
+    <div id="computerCodeView" class="card" hidden>
+      <h1>Enter Phone Code</h1>
+      <input id="codeInput" placeholder="6-digit code" inputmode="numeric" pattern="\d*"/>
+      <button id="connectBtn">Connect</button>
+      <div class="link" id="switchToPhone">I'm not on computer</div>
+    </div>
+  </div>
+
+  <!-- Computer - connected full-screen view (hidden by default) -->
+  <div id="computerConnectedView" hidden>
+    <div id="topbar">
+      <input id="urlInput" placeholder="Enter URL to fetch (https://...)"/>
+      <button id="sendBtn" disabled>Go</button>
+      <button id="closeBrowserBtn" style="background:#444;border:none;color:#fff;padding:8px 10px;border-radius:8px;">Close</button>
+    </div>
+    <div id="browser" role="region" aria-live="polite">Not fetching yet.</div>
   </div>
 
 <script>
 (() => {
-  const phoneUI = document.getElementById('phoneUI');
-  const phoneConnected = document.getElementById('phoneConnected');
-  const computerUI = document.getElementById('computerUI');
-  const connectedUI = document.getElementById('connectedUI');
-  const app = document.getElementById('app');
+  // view ids
+  const VIEWS = ['phoneCodeView','phoneConnectedView','computerCodeView','computerConnectedView'];
 
+  // elements
+  const phoneCodeView = document.getElementById('phoneCodeView');
+  const phoneConnectedView = document.getElementById('phoneConnectedView');
+  const computerCodeView = document.getElementById('computerCodeView');
+  const computerConnectedView = document.getElementById('computerConnectedView');
   const phoneCodeEl = document.getElementById('phoneCode');
   const resetCodeBtn = document.getElementById('resetCodeBtn');
   const switchToComputer = document.getElementById('switchToComputer');
   const switchToPhone = document.getElementById('switchToPhone');
-  const disconnectBtn = document.getElementById('disconnectBtn');
+  const switchToComputerFromPhone = document.getElementById('switchToComputerFromPhone');
   const codeInput = document.getElementById('codeInput');
   const connectBtn = document.getElementById('connectBtn');
   const urlInput = document.getElementById('urlInput');
   const sendBtn = document.getElementById('sendBtn');
   const browserEl = document.getElementById('browser');
+  const disconnectBtn = document.getElementById('disconnectBtn');
   const uptimeEl = document.getElementById('uptime');
+  const remoteIdEl = document.getElementById('remoteId');
+  const closeBrowserBtn = document.getElementById('closeBrowserBtn');
 
   let peer = null;
   let conn = null;
@@ -181,6 +208,16 @@
   let role = /Mobi|Android/i.test(navigator.userAgent) ? 'phone' : 'computer';
   let uptimeStart = null;
   let uptimeTimer = null;
+
+  // utility: show exactly one view
+  function showView(viewId) {
+    VIEWS.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (id === viewId) el.hidden = false;
+      else el.hidden = true;
+    });
+  }
 
   function getOrCreateCode(reset=false) {
     if (!reset && myCode) return myCode;
@@ -192,113 +229,119 @@
     return myCode;
   }
 
-  function resetUI() {
-    phoneUI.hidden = true;
-    phoneConnected.hidden = true;
-    computerUI.hidden = true;
-    connectedUI.hidden = true;
-    app.hidden = false;
-  }
-
-  function showPhoneUI() {
-    role = 'phone';
-    resetUI();
-    phoneUI.hidden = false;
-    phoneCodeEl.textContent = getOrCreateCode();
-    setupPeer(myCode);
-  }
-
-  function showPhoneConnected() {
-    resetUI();
-    phoneConnected.hidden = false;
-    uptimeStart = Date.now();
-    uptimeTimer = setInterval(updateUptime, 1000);
-  }
-
-  function updateUptime() {
-    const seconds = Math.floor((Date.now() - uptimeStart) / 1000);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    uptimeEl.textContent = `Uptime: ${mins}m ${secs}s`;
-  }
-
-  function showComputerUI() {
-    role = 'computer';
-    resetUI();
-    computerUI.hidden = false;
-    setupPeer();
-  }
-
-  function showConnectedUI() {
-    resetUI();
-    if (role === 'computer') {
-      app.hidden = true;
-      connectedUI.hidden = false;   // fullscreen browser
-    } else if (role === 'phone') {
-      phoneUI.hidden = true;
-      showPhoneConnected();
+  // peer setup
+  function setupPeer(id) {
+    // destroy previous peer cleanly
+    if (peer) {
+      try { peer.destroy(); } catch(e) {}
+      peer = null;
+      conn = null;
     }
+
+    // Create new peer. If id undefined -> random id
+    peer = id ? new Peer(id) : new Peer();
+    peer.on('connection', dc => {
+      // accept only one active connection
+      conn = dc;
+      attachConnHandlers(dc);
+    });
+    peer.on('error', err => {
+      console.error('Peer error', err);
+    });
+    // If needed, you can log your own peer id on 'open':
+    peer.on('open', id => {
+      // no UI change here; UI changes on connection open
+      console.log('Peer open id=', id);
+    });
   }
 
-  switchToComputer.onclick = () => showComputerUI();
-  switchToPhone.onclick = () => showPhoneUI();
-  resetCodeBtn.onclick = () => {
-    getOrCreateCode(true);
-    phoneCodeEl.textContent = myCode;
-    setupPeer(myCode);
-  };
-  disconnectBtn.onclick = () => {
-    if (conn) conn.close();
-    if (peer) peer.destroy();
-    clearInterval(uptimeTimer);
-    showPhoneUI();
-  };
-
-  connectBtn.onclick = () => {
-    if (!peer) return;
-    const target = codeInput.value.trim();
-    if (!target) return alert("Enter a code.");
-    if (target === myCode) return alert("Cannot connect to your own code!");
-    connectBtn.disabled = true;
-    const dc = peer.connect(target, {reliable:true});
-    dc.on('open', () => onConnected(dc));
+  function attachConnHandlers(dc) {
+    dc.on('open', () => {
+      onConnected(dc);
+    });
     dc.on('data', onData);
     dc.on('close', onDisconnected);
-    dc.on('error', err => { alert("Connection error: " + err); connectBtn.disabled = false; });
-  };
-
-  function setupPeer(id) {
-    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
-    peer = new Peer(id);
-    peer.on('connection', dc => {
-      conn = dc;
-      dc.on('open', () => onConnected(dc));
-      dc.on('data', onData);
-      dc.on('close', onDisconnected);
-    });
-    peer.on('error', err => { console.error("Peer error", err); });
+    dc.on('error', err => console.warn('DataConn error', err));
   }
 
+  // UI flows
+  function showPhoneCodeUI() {
+    role = 'phone';
+    phoneCodeEl.textContent = getOrCreateCode();
+    showView('phoneCodeView');
+    setupPeer(myCode || getOrCreateCode());
+  }
+
+  function startUptime() {
+    uptimeStart = Date.now();
+    if (uptimeTimer) clearInterval(uptimeTimer);
+    uptimeTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - uptimeStart) / 1000);
+      const m = Math.floor(s / 60);
+      const sec = s % 60;
+      uptimeEl.textContent = `Uptime: ${m}m ${sec}s`;
+    }, 1000);
+  }
+  function stopUptime() {
+    if (uptimeTimer) { clearInterval(uptimeTimer); uptimeTimer = null; }
+    uptimeEl.textContent = 'Uptime: 0s';
+  }
+
+  function showPhoneConnectedUI(remoteId) {
+    role = 'phone';
+    remoteIdEl.textContent = remoteId || '—';
+    showView('phoneConnectedView');
+    startUptime();
+  }
+
+  function showComputerCodeUI() {
+    role = 'computer';
+    showView('computerCodeView');
+    setupPeer(); // random id for the computer (so phone can connect)
+  }
+
+  function showComputerConnectedUI(remoteId) {
+    // full-screen connected view
+    showView('computerConnectedView');
+    // set button states
+    sendBtn.disabled = !(conn && conn.open);
+    // optionally show remote id somewhere
+    browserEl.textContent = `Connected to ${remoteId || '—'}. Enter a URL and press Go.`;
+  }
+
+  // connection lifecycle
   function onConnected(dc) {
     conn = dc;
-    showConnectedUI();
+    // mark UI based on role (which side accepted/initiated)
+    if (role === 'computer') {
+      // computer -> show browser overlay
+      showComputerConnectedUI(dc.peer);
+    } else {
+      // phone -> show connected card with uptime
+      showPhoneConnectedUI(dc.peer);
+    }
+
+    // enable/disable actions
     connectBtn.disabled = false;
+    sendBtn.disabled = !(conn && conn.open);
   }
 
   function onDisconnected() {
-    resetUI();
-    clearInterval(uptimeTimer);
-    if (role === 'phone') {
-      showPhoneUI();
-    } else {
-      showComputerUI();
-    }
+    // reset connection and timers
+    conn = null;
+    stopUptime();
+    sendBtn.disabled = true;
+    // return to the appropriate code UI for that role
+    if (role === 'phone') showPhoneCodeUI();
+    else showComputerCodeUI();
   }
 
+  // data handling
   async function onData(data) {
+    if (!data) return;
     if (role === 'computer') {
       if (data.type === 'fetch-response') {
-        renderPage(data.bodyText, urlInput.value);
+        renderPage(data.bodyText || '', urlInput.value);
       }
     } else if (role === 'phone') {
       if (data.type === 'fetch-request') {
@@ -315,47 +358,104 @@
   }
 
   function renderPage(html, baseUrl) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const base = new URL(baseUrl);
-
-    doc.querySelectorAll("[href]").forEach(el => {
-      const val = el.getAttribute("href");
-      if (val && !val.startsWith("http") && !val.startsWith("#")) {
-        el.setAttribute("href", new URL(val, base).href);
-      }
-      el.addEventListener("click", e => {
-        e.preventDefault();
-        const href = el.getAttribute("href");
-        if (href) {
-          urlInput.value = href;
-          sendBtn.click();
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const base = new URL(baseUrl);
+      // rewrite links and srcs to absolute
+      doc.querySelectorAll("[href]").forEach(el => {
+        const val = el.getAttribute("href");
+        if (val && !val.startsWith("http") && !val.startsWith("#")) {
+          el.setAttribute("href", new URL(val, base).href);
+        }
+        el.addEventListener("click", e => {
+          e.preventDefault();
+          const href = el.getAttribute("href");
+          if (href) {
+            urlInput.value = href;
+            sendBtn.click();
+          }
+        });
+      });
+      doc.querySelectorAll("[src]").forEach(el => {
+        const val = el.getAttribute("src");
+        if (val && !val.startsWith("http")) {
+          el.setAttribute("src", new URL(val, base).href);
         }
       });
-    });
-
-    doc.querySelectorAll("[src]").forEach(el => {
-      const val = el.getAttribute("src");
-      if (val && !val.startsWith("http")) {
-        el.setAttribute("src", new URL(val, base).href);
-      }
-    });
-
-    browserEl.innerHTML = "";
-    browserEl.appendChild(doc.body);
+      browserEl.innerHTML = "";
+      browserEl.appendChild(doc.body);
+    } catch (e) {
+      browserEl.textContent = "Failed to render page: " + String(e);
+    }
   }
 
-  sendBtn.onclick = () => {
-    const url = urlInput.value.trim();
-    if (!url) return;
-    conn.send({type:'fetch-request', url});
-    browserEl.textContent = "Fetching...";
+  // UI event wiring
+  resetCodeBtn.onclick = () => {
+    getOrCreateCode(true);
+    phoneCodeEl.textContent = myCode;
+    // re-create peer with new id so old connections won't attach
+    setupPeer(myCode);
   };
 
-  urlInput.addEventListener("keypress", e => { if (e.key === "Enter") sendBtn.click(); });
+  switchToComputer.onclick = () => showComputerCodeUI();
+  switchToPhone.onclick = () => showPhoneCodeUI();
+  switchToComputerFromPhone.onclick = () => showComputerCodeUI();
 
-  // ✅ Correct initial UI
-  if (role === 'phone') showPhoneUI();
-  else showComputerUI();
+  disconnectBtn.onclick = () => {
+    if (conn) try { conn.close(); } catch(e){}
+    if (peer) try { peer.destroy(); } catch(e){}
+    conn = null;
+    stopUptime();
+    showPhoneCodeUI();
+  };
+
+  connectBtn.onclick = () => {
+    if (!peer) return alert('Peer not ready yet.');
+    const target = (codeInput.value||'').trim();
+    if (!target) return alert('Enter a code.');
+    if (target === myCode) return alert("Cannot connect to your own code.");
+    connectBtn.disabled = true;
+    const dc = peer.connect(target, {reliable:true});
+    attachConnHandlers(dc);
+  };
+
+  sendBtn.onclick = () => {
+    if (!conn || !conn.open) return alert('Not connected.');
+    const url = (urlInput.value||'').trim();
+    if (!url) return alert('Enter a URL.');
+    // send fetch-request to phone
+    conn.send({type:'fetch-request', url});
+    browserEl.textContent = 'Fetching...';
+  };
+
+  closeBrowserBtn.onclick = () => {
+    // close overlay and go back to centered code UI
+    if (conn) try { conn.close(); } catch(e){}
+    if (peer) try { peer.destroy(); } catch(e){}
+    conn = null;
+    showComputerCodeUI();
+  };
+
+  // init - ensure every view is hidden, then show appropriate one
+  (function init() {
+    // hide all views to be absolutely sure (use JS so HTML attribute state doesn't matter)
+    VIEWS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
+    });
+
+    // ensure we have a phone code available (but do NOT show phone UI yet)
+    // We'll call the appropriate show*UI below.
+    myCode = localStorage.getItem("phoneCode") || null;
+
+    // Start at the correct UI based on role
+    if (role === 'phone') {
+      showPhoneCodeUI();
+    } else {
+      showComputerCodeUI();
+    }
+  })();
+
 })();
 </script>
 </body>
